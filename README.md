@@ -1,6 +1,6 @@
 # ArXiv Research Assistant
 
-A production-grade Retrieval-Augmented Generation (RAG) system for searching, retrieving, and chatting with arXiv research papers using hybrid retrieval, reranking, and modern LLMs.
+A production-grade Retrieval-Augmented Generation (RAG) system for searching, retrieving, and chatting with arXiv research papers using hybrid retrieval and modern LLMs.
 
 ---
 
@@ -8,85 +8,110 @@ A production-grade Retrieval-Augmented Generation (RAG) system for searching, re
 
 Build a production-grade RAG system for arXiv papers featuring:
 
-- Hybrid retrieval (Dense + BM25)
+- Hybrid retrieval
 - Intelligent reranking
 - Accurate citations
 - Evaluation pipeline
 - Production-ready deployment
 - Scalable document ingestion
-- Modern full-stack architecture
+- Modern backend architecture
+
+---
+# Architecture
+
+```text
+                          User
+                            │
+                            ▼
+                    Next.js Frontend
+                            │
+                            ▼
+                     FastAPI Backend
+                            │
+          ┌─────────────────┴─────────────────┐
+          │                                   │
+          ▼                                   ▼
+   Retrieval Pipeline                 Background Jobs
+          │                                   │
+          ▼                                   ▼
+      Hybrid Search                  Celery + Redis
+          │                                   │
+     ┌────┴────┐                              │
+     ▼         ▼                              ▼
+   BM25   Vector Search              PDF Processing
+          │                                   │
+          └──────────────┬────────────────────┘
+                         ▼
+                     Reranker
+                         │
+                         ▼
+                  Context Builder
+                         │
+                         ▼
+                      GPT-4.1
+                         │
+                         ▼
+                      Response
+
+                 PostgreSQL + pgvector
+```
 
 ---
 
 # Tech Stack
 
 ### Frontend
-- Next.js
+- Next.js 15
+- React
 - TypeScript
 - Tailwind CSS
 - shadcn/ui
+- TanStack Query (React Query)
+- Zustand
+- Framer Motion
 
 ### Backend
 - FastAPI
+- Python 3.12
 - SQLAlchemy
 - Pydantic
+- Celery
+- Redis
 
-### AI & Retrieval
-- bge-large-en-v1.5 (Embeddings)
-- bge-reranker-large
+### AI
+**Embeddings**
+- BAAI `bge-large-en-v1.5`
+
+**Reranker**
+- BAAI `bge-reranker-large`
+
+**LLM**
 - GPT-4.1
-- BM25
-- pgvector
 
-### Database & Infrastructure
+### Database
 - PostgreSQL
 - pgvector
-- Redis
-- Celery
+
+### Search
+- BM25
+- Dense Vector Search
+- Reciprocal Rank Fusion (RRF)
+
+### Evaluation
+- Ragas
+- DeepEval
+
+### DevOps & Deployment
 - Docker
+- Docker Compose
 - GitHub Actions
 - OpenTelemetry
+- Prometheus
 - Grafana
-
----
-
-# Architecture
-
-```
-                +----------------------+
-                |      Next.js UI      |
-                +----------+-----------+
-                           |
-                           |
-                     REST / Streaming
-                           |
-                           v
-                +----------------------+
-                |       FastAPI        |
-                +----------+-----------+
-                           |
-          +----------------+----------------+
-          |                                 |
-          |                                 |
-          v                                 v
-  Hybrid Retrieval                  Conversation
-(BM25 + pgvector)                     Memory
-          |
-          v
-      Reranker
-          |
-          v
-    Context Builder
-          |
-          v
-         LLM
-          |
-          v
-      Final Response
-
+- Render
 -----------------------------------------------
 
-Background Pipeline
+Document Ingestion Pipeline
 
 arXiv API
      |
@@ -103,38 +128,58 @@ arXiv API
  Chunking
      |
      v
- Embeddings
+ Embedding Generation
      |
      v
-PostgreSQL + pgvector
-
-Executed asynchronously using Celery + Redis.
+ PostgreSQL + pgvector
 ```
 
 ---
 
 # Folder Structure
 
-```
-.
-├── backend/
-├── frontend/
-├── worker/
-├── docs/
+```text
+arxiv-rag-assistant/
+│
+├── app/
+│   ├── api/
+│   ├── core/
+│   ├── database/
+│   ├── ingestion/
+│   ├── services/
+│   ├── models/
+│   └── utils/
+│
+├── data/
+│   ├── raw/
+│   └── processed/
+│
+├── scripts/
 ├── tests/
-├── evaluation/
-├── benchmark_dataset/
-└── .github/
-    └── workflows/
+├── docker/
+│
+├── requirements.txt
+├── docker-compose.yml
+├── .env
+├── README.md
+└── main.py
 ```
 
 ---
 
 # Future Roadmap
 
+- Hybrid search (Dense + BM25)
+- Reranking pipeline
+- Streaming chat responses
+- Conversation memory
+- Citation support
+- Authentication
+- Background ingestion workers
+- Evaluation framework
+- Monitoring and observability
 - Paper comparison
 - Citation graph visualization
-- Research paper recommendations
-- Bookmarks and saved collections
-- Research trend dashboard
-- MCP server integration
+- Research recommendations
+- Bookmarking
+- Trend dashboard
