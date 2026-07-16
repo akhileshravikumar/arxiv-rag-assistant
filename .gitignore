@@ -10,4 +10,7 @@ data/raw/*
 !data/raw/.gitkeep
 
 data/processed/*
-!data/processed/.gitkeep
+data/processed/arxiv_metadata.json
+!data/processed/extracted_text/
+data/processed/extracted_text/*
+!data/processed/extracted_text/.gitkeep
