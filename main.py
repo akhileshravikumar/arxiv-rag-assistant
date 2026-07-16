@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database.database import Base, engine, get_db
-from app.models.paper import Paper
+from app.models import Chunk, Paper
 from app.schemas.paper import PaperCreate, PaperResponse
 
 
@@ -151,3 +151,40 @@ def list_papers(db: DatabaseSession):
     papers = db.scalars(statement).all()
 
     return papers
+
+@app.get(
+    "/papers/{paper_id}/chunks",
+    tags=["Chunks"],
+    summary="List chunks for one paper",
+)
+def list_paper_chunks(
+    paper_id: int,
+    db: DatabaseSession,
+):
+    paper = db.get(Paper, paper_id)
+
+    if paper is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Paper not found",
+        )
+
+    statement = (
+        select(Chunk)
+        .where(Chunk.paper_id == paper_id)
+        .order_by(Chunk.chunk_index)
+    )
+
+    chunks = db.scalars(statement).all()
+
+    return [
+        {
+            "id": chunk.id,
+            "paper_id": chunk.paper_id,
+            "chunk_index": chunk.chunk_index,
+            "char_start": chunk.char_start,
+            "char_end": chunk.char_end,
+            "text": chunk.text,
+        }
+        for chunk in chunks
+    ]

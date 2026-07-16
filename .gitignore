@@ -9,8 +9,10 @@ __pycache__/
 data/raw/*
 !data/raw/.gitkeep
 
-data/processed/*
 data/processed/arxiv_metadata.json
-!data/processed/extracted_text/
+
 data/processed/extracted_text/*
 !data/processed/extracted_text/.gitkeep
+
+data/processed/chunks/*
+!data/processed/chunks/.gitkeep
