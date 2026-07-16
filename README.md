@@ -183,3 +183,17 @@ arxiv-rag-assistant/
 - Research recommendations
 - Bookmarking
 - Trend dashboard
+
+## PDF Text Extraction
+
+Extract text from a downloaded paper:
+
+```bash
+python -m scripts.extract_pdf_text "data/raw/example-paper.pdf"
+```
+
+If you want a specific output file name: 
+
+```bash
+python -m scripts.extract_pdf_text "data/raw/example-paper.pdf" --output "data/processed/paper1.txt"
+```
