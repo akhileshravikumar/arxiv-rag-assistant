@@ -17,3 +17,5 @@ pymupdf
 alembic
 
 pgvector
+
+sentence-transformers

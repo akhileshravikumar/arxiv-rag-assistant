@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
+
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -46,6 +48,11 @@ class Chunk(Base):
     text: Mapped[str] = mapped_column(
         Text,
         nullable=False,
+    )
+
+    embedding: Mapped[list[float] | None] = mapped_column(
+    Vector(1024),
+    nullable=True,
     )
 
     char_start: Mapped[int] = mapped_column(
