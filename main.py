@@ -10,6 +10,13 @@ from app.database.database import Base, engine, get_db
 from app.models import Chunk, Paper
 from app.schemas.paper import PaperCreate, PaperResponse
 
+from app.schemas.search import (
+    DenseSearchRequest,
+    DenseSearchResponse,
+)
+from app.services.embedding_service import EmbeddingService
+from app.services.retrieval_service import RetrievalService
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +47,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+embedding_service = EmbeddingService()
+
+retrieval_service = RetrievalService(
+    embedding_service=embedding_service
+)
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -188,3 +200,40 @@ def list_paper_chunks(
         }
         for chunk in chunks
     ]
+
+@app.post(
+    "/search/dense",
+    response_model=DenseSearchResponse,
+    tags=["Search"],
+    summary="Search chunks using dense vector retrieval",
+)
+def dense_search(
+    request: DenseSearchRequest,
+    db: DatabaseSession,
+):
+    try:
+        results = retrieval_service.dense_search(
+            db=db,
+            query=request.query,
+            top_k=request.top_k,
+        )
+
+        return {
+            "query": request.query,
+            "result_count": len(results),
+            "results": results,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail="Dense search failed",
+        )

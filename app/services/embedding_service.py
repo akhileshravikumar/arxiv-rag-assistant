@@ -1,8 +1,14 @@
-from sentence_transformers import SentenceTransformer
 from collections.abc import Sequence
+
+from sentence_transformers import SentenceTransformer
+
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
 EMBEDDING_DIMENSION = 1024
+
+QUERY_INSTRUCTION = (
+    "Represent this sentence for searching relevant passages: "
+)
 
 
 class EmbeddingService:
@@ -16,21 +22,43 @@ class EmbeddingService:
         print("Embedding model loaded.")
 
     def embed_text(self, text: str) -> list[float]:
-        """
-        Generate one normalized embedding.
-        """
-        embeddings = self.embed_documents([text])
+        return self.embed_documents([text])[0]
 
-        return embeddings[0]
+    def embed_query(self, query: str) -> list[float]:
+        """
+        Generate an embedding for a search query.
+        """
+        cleaned_query = query.strip()
+
+        if not cleaned_query:
+            raise ValueError("Search query cannot be empty.")
+
+        instructed_query = (
+            f"{QUERY_INSTRUCTION}{cleaned_query}"
+        )
+
+        embedding = self.model.encode(
+            instructed_query,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+
+        vector = embedding.tolist()
+
+        if len(vector) != EMBEDDING_DIMENSION:
+            raise RuntimeError(
+                "Unexpected query embedding dimension: "
+                f"expected {EMBEDDING_DIMENSION}, "
+                f"received {len(vector)}."
+            )
+
+        return vector
 
     def embed_documents(
         self,
         texts: Sequence[str],
         batch_size: int = 16,
     ) -> list[list[float]]:
-        """
-        Generate normalized embeddings for multiple document chunks.
-        """
         if not texts:
             return []
 
@@ -56,7 +84,7 @@ class EmbeddingService:
 
         if embeddings.ndim != 2:
             raise RuntimeError(
-                "The embedding model returned an unexpected array shape."
+                "The embedding model returned an unexpected shape."
             )
 
         if embeddings.shape[1] != EMBEDDING_DIMENSION:
