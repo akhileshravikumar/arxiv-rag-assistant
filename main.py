@@ -6,35 +6,47 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.database.database import Base, engine, get_db
+from app.database.database import (
+    Base,
+    SessionLocal,
+    engine,
+    get_db,
+)
 from app.models import Chunk, Paper
 from app.schemas.paper import PaperCreate, PaperResponse
 
 from app.schemas.search import (
+    BM25SearchRequest,
+    BM25SearchResponse,
     DenseSearchRequest,
     DenseSearchResponse,
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.retrieval_service import RetrievalService
+from app.services.bm25_service import BM25Service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Run application startup checks and create tables.
-
-    """
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
         Base.metadata.create_all(bind=engine)
 
-        print("Database connection successful.")
-        print("Database tables are ready.")
+        with SessionLocal() as db:
+            indexed_documents = (
+                bm25_service.build_index(db)
+            )
 
-    except SQLAlchemyError as exc:
-        print(f"Database startup failed: {exc}")
+        print("Database connection successful.")
+        print(
+            f"BM25 index built from "
+            f"{indexed_documents} chunks."
+        )
+
+    except Exception as exc:
+        print(f"Application startup failed: {exc}")
         raise
 
     yield
@@ -48,7 +60,7 @@ app = FastAPI(
 )
 
 embedding_service = EmbeddingService()
-
+bm25_service = BM25Service()
 retrieval_service = RetrievalService(
     embedding_service=embedding_service
 )
@@ -236,4 +248,39 @@ def dense_search(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail="Dense search failed",
+        )
+    
+@app.post(
+    "/search/bm25",
+    response_model=BM25SearchResponse,
+    tags=["Search"],
+    summary="Search chunks using BM25 keyword retrieval",
+)
+def bm25_search(
+    request: BM25SearchRequest,
+):
+    try:
+        results = bm25_service.search(
+            query=request.query,
+            top_k=request.top_k,
+        )
+
+        return {
+            "query": request.query,
+            "result_count": len(results),
+            "results": results,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=str(exc),
         )

@@ -27,3 +27,31 @@ class DenseSearchRequest(BaseModel):
         ge=1,
         le=20,
     )
+
+class BM25SearchResult(BaseModel):
+    chunk_id: int
+    paper_id: int
+    paper_title: str
+    chunk_index: int
+    text: str
+    score: float
+    exact_phrase_match: bool
+
+
+class BM25SearchRequest(BaseModel):
+    query: str = Field(
+        min_length=1,
+        max_length=1000,
+    )
+
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+    )
+
+
+class BM25SearchResponse(BaseModel):
+    query: str
+    result_count: int
+    results: list[BM25SearchResult]

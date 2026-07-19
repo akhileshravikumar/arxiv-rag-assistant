@@ -21,3 +21,5 @@ pgvector
 sentence-transformers
 
 pytest
+
+rank-mb25
