@@ -7,5 +7,8 @@ from app.schemas.search import (
     DenseSearchRequest,
     DenseSearchResponse,
     DenseSearchResult,
+    HybridSearchRequest,
+    HybridSearchResponse,
+    HybridSearchResult,
 )
 __all__ = ["PaperCreate", "PaperResponse"]

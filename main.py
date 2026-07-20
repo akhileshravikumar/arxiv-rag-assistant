@@ -20,7 +20,10 @@ from app.schemas.search import (
     BM25SearchResponse,
     DenseSearchRequest,
     DenseSearchResponse,
+    HybridSearchRequest,
+    HybridSearchResponse,
 )
+from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.embedding_service import EmbeddingService
 from app.services.retrieval_service import RetrievalService
 from app.services.bm25_service import BM25Service
@@ -60,11 +63,17 @@ app = FastAPI(
 )
 
 embedding_service = EmbeddingService()
-bm25_service = BM25Service()
+
 retrieval_service = RetrievalService(
     embedding_service=embedding_service
 )
 
+bm25_service = BM25Service()
+
+hybrid_retrieval_service = HybridRetrievalService(
+    dense_service=retrieval_service,
+    bm25_service=bm25_service,
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
@@ -283,4 +292,54 @@ def bm25_search(
                 status.HTTP_503_SERVICE_UNAVAILABLE
             ),
             detail=str(exc),
+        )
+    
+@app.post(
+    "/search/hybrid",
+    response_model=HybridSearchResponse,
+    tags=["Search"],
+    summary=(
+        "Search chunks using dense retrieval, "
+        "BM25 and Reciprocal Rank Fusion"
+    ),
+)
+def hybrid_search(
+    request: HybridSearchRequest,
+    db: DatabaseSession,
+):
+    try:
+        results = (
+            hybrid_retrieval_service.hybrid_search(
+                db=db,
+                query=request.query,
+                top_k=request.top_k,
+            )
+        )
+
+        return {
+            "query": request.query,
+            "result_count": len(results),
+            "results": results,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail="Hybrid search failed",
         )
