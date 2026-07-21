@@ -22,12 +22,17 @@ from app.schemas.search import (
     DenseSearchResponse,
     HybridSearchRequest,
     HybridSearchResponse,
+    RerankedSearchResponse,
+    RerankedSearchRequest
 )
 from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.embedding_service import EmbeddingService
 from app.services.retrieval_service import RetrievalService
 from app.services.bm25_service import BM25Service
 
+from app.services.context_builder import ContextBuilder
+from app.services.reranker_service import RerankerService
+from app.services.retrieval_pipeline import RetrievalPipeline
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,6 +79,24 @@ hybrid_retrieval_service = HybridRetrievalService(
     dense_service=retrieval_service,
     bm25_service=bm25_service,
 )
+reranker_service = RerankerService(
+    model_name="BAAI/bge-reranker-large",
+    max_length=512,
+)
+
+context_builder = ContextBuilder(
+    max_context_characters=12_000,
+    max_chunk_characters=3_000,
+)
+
+retrieval_pipeline = RetrievalPipeline(
+    hybrid_service=hybrid_retrieval_service,
+    reranker_service=reranker_service,
+    context_builder=context_builder,
+    candidate_k=20,
+    final_k=5,
+)
+
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
@@ -342,4 +365,54 @@ def hybrid_search(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail="Hybrid search failed",
+        )
+    
+@app.post(
+    "/search/reranked",
+    response_model=RerankedSearchResponse,
+    tags=["Search"],
+    summary="Run hybrid retrieval and cross-encoder reranking",
+)
+def reranked_search(
+    request: RerankedSearchRequest,
+    db: DatabaseSession,
+):
+    if request.final_k > request.candidate_k:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "final_k cannot be greater "
+                "than candidate_k"
+            ),
+        )
+
+    try:
+        results = (
+            retrieval_pipeline.retrieve_and_rerank(
+                db=db,
+                query=request.query,
+                candidate_k=request.candidate_k,
+                final_k=request.final_k,
+            )
+        )
+
+        return {
+            "query": request.query,
+            "candidate_k": request.candidate_k,
+            "result_count": len(results),
+            "results": results,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=str(exc),
         )

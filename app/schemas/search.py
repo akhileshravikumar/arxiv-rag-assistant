@@ -92,3 +92,43 @@ class HybridSearchResponse(BaseModel):
     query: str
     result_count: int
     results: list[HybridSearchResult]
+
+class RerankedSearchRequest(BaseModel):
+    query: str = Field(
+        min_length=1,
+        max_length=1000,
+    )
+
+    candidate_k: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+    )
+
+    final_k: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+    )
+
+
+class RerankedSearchResult(HybridSearchResult):
+    reranker_score: float
+    reranker_rank: int
+
+
+class RerankedSearchResponse(BaseModel):
+    query: str
+    candidate_k: int
+    result_count: int
+    results: list[RerankedSearchResult]
+
+
+class ContextResponse(BaseModel):
+    query: str
+    context: str
+    character_count: int
+    estimated_token_count: int
+    included_chunk_count: int
+    skipped_chunk_count: int
+    results: list[RerankedSearchResult]

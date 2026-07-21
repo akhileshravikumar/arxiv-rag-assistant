@@ -52,9 +52,9 @@ class HybridRetrievalService:
         if not cleaned_query:
             raise ValueError("Search query cannot be empty.")
 
-        if top_k < 1 or top_k > 20:
+        if top_k < 1 or top_k > 100:
             raise ValueError(
-                "top_k must be between 1 and 20."
+                "top_k must be between 1 and 100."
             )
 
         candidate_count = min(
