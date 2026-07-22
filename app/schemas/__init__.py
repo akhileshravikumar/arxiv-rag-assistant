@@ -11,4 +11,11 @@ from app.schemas.search import (
     HybridSearchResponse,
     HybridSearchResult,
 )
+
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    ChatSource,
+)
+
 __all__ = ["PaperCreate", "PaperResponse"]

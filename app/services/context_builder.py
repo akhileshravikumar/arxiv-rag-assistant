@@ -42,22 +42,17 @@ class ContextBuilder:
         return max(1, (len(text) + 3) // 4)
 
     def build(
-        self,
+    self,
         chunks: list[dict],
     ) -> ContextBuildResult:
-        """
-        Build citation-ready context within a character budget.
-        """
+        
         context_sections: list[str] = []
         included_chunks: list[dict] = []
         skipped_chunks: list[dict] = []
 
         current_length = 0
 
-        for source_number, chunk in enumerate(
-            chunks,
-            start=1,
-        ):
+        for chunk in chunks:
             chunk_text = chunk["text"].strip()
 
             if not chunk_text:
@@ -69,6 +64,8 @@ class ContextBuilder:
                 )
                 continue
 
+            source_number = len(included_chunks) + 1
+
             truncated_text = chunk_text[
                 : self.max_chunk_characters
             ]
@@ -79,8 +76,6 @@ class ContextBuilder:
                 f"Paper ID: {chunk['paper_id']}\n"
                 f"Chunk ID: {chunk['chunk_id']}\n"
                 f"Chunk index: {chunk['chunk_index']}\n"
-                f"Reranker score: "
-                f"{chunk['reranker_score']:.6f}\n"
                 f"Text:\n{truncated_text}\n"
                 f"[/SOURCE {source_number}]"
             )
@@ -109,8 +104,13 @@ class ContextBuilder:
                 )
                 continue
 
+            included_chunk = {
+                **chunk,
+                "source_number": source_number,
+            }
+
             context_sections.append(section)
-            included_chunks.append(chunk)
+            included_chunks.append(included_chunk)
             current_length = projected_length
 
         context = "\n\n".join(context_sections)

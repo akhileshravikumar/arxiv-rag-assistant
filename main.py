@@ -34,6 +34,15 @@ from app.services.context_builder import ContextBuilder
 from app.services.reranker_service import RerankerService
 from app.services.retrieval_pipeline import RetrievalPipeline
 
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+)
+from app.services.answer_generation_service import (
+    AnswerGenerationService,
+)
+from app.services.chat_service import ChatService
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -95,6 +104,16 @@ retrieval_pipeline = RetrievalPipeline(
     context_builder=context_builder,
     candidate_k=20,
     final_k=5,
+)
+
+answer_generation_service = (
+    AnswerGenerationService()
+)
+
+chat_service = ChatService(
+    retrieval_pipeline=retrieval_pipeline,
+    context_builder=context_builder,
+    answer_service=answer_generation_service,
 )
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -416,3 +435,74 @@ def reranked_search(
             ),
             detail=str(exc),
         )
+
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+    tags=["Chat"],
+    summary=(
+        "Answer a question using retrieved "
+        "research-paper evidence"
+    ),
+)
+def chat(
+    request: ChatRequest,
+    db: DatabaseSession,
+):
+    if request.final_k > request.candidate_k:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "final_k cannot be greater "
+                "than candidate_k"
+            ),
+        )
+
+    try:
+        result = chat_service.answer_question(
+            db=db,
+            question=request.question,
+            candidate_k=request.candidate_k,
+            final_k=request.final_k,
+        )
+
+        return {
+            "question": result.question,
+            "answer": result.answer,
+            "model": result.model,
+            "cited_source_numbers": (
+                result.cited_source_numbers
+            ),
+            "sources": result.sources,
+            "context_character_count": (
+                result.context_character_count
+            ),
+            "estimated_context_tokens": (
+                result.estimated_context_tokens
+            ),
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        print(f"Unexpected chat error: {exc}")
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail="Answer generation failed.",
+        ) from exc
+    

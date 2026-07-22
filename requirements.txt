@@ -23,3 +23,5 @@ sentence-transformers
 pytest
 
 rank-mb25
+
+openai
