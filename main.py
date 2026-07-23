@@ -12,7 +12,7 @@ from app.database.database import (
     engine,
     get_db,
 )
-from app.models import Chunk, Paper
+from app.models import Chunk, Paper, User
 from app.schemas.paper import PaperCreate, PaperResponse
 
 from app.schemas.search import (
@@ -42,6 +42,13 @@ from app.services.answer_generation_service import (
     AnswerGenerationService,
 )
 from app.services.chat_service import ChatService
+
+from app.models.user import User
+from app.routers.auth import router as auth_router
+
+from app.dependencies.auth import CurrentUser
+
+from app.dependencies.auth import AdminUser
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,6 +82,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.include_router(auth_router)
 
 embedding_service = EmbeddingService()
 
@@ -161,6 +170,7 @@ def health_check(db: DatabaseSession):
 def create_paper(
     paper_data: PaperCreate,
     db: DatabaseSession,
+    admin_user: AdminUser,
 ):
     paper = Paper(
         title=paper_data.title,
@@ -448,6 +458,7 @@ def reranked_search(
 def chat(
     request: ChatRequest,
     db: DatabaseSession,
+    current_user: CurrentUser,
 ):
     if request.final_k > request.candidate_k:
         raise HTTPException(

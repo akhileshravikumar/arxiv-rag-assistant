@@ -18,4 +18,11 @@ from app.schemas.chat import (
     ChatSource,
 )
 
+from app.schemas.auth import (
+    TokenPayload,
+    TokenResponse,
+    UserRegisterRequest,
+    UserResponse,
+)
+
 __all__ = ["PaperCreate", "PaperResponse"]

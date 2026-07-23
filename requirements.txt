@@ -25,3 +25,13 @@ pytest
 rank-mb25
 
 openai
+
+pwdlib[argon2]
+
+PyJWT
+
+python-multipart
+
+pydantic[email]
+
+httpx2
