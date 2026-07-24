@@ -35,3 +35,7 @@ python-multipart
 pydantic[email]
 
 httpx2
+
+celery[redis]
+
+redis

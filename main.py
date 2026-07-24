@@ -50,6 +50,11 @@ from app.dependencies.auth import CurrentUser
 
 from app.dependencies.auth import AdminUser
 
+from app.routers.ingestion import (
+    router as ingestion_router,
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -84,6 +89,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(ingestion_router)
 
 embedding_service = EmbeddingService()
 

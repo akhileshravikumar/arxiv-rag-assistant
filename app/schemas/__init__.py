@@ -25,4 +25,10 @@ from app.schemas.auth import (
     UserResponse,
 )
 
+from app.schemas.ingestion import (
+    IngestionRequest,
+    IngestionSubmissionResponse,
+    TaskStatusResponse,
+)
+
 __all__ = ["PaperCreate", "PaperResponse"]
