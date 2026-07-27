@@ -58,6 +58,8 @@ class FakeContextBuilder:
 
 
 class FakeAnswerService:
+    model = "fake-model"
+
     def generate_answer(
         self,
         question,
@@ -73,6 +75,24 @@ class FakeAnswerService:
             model="fake-model",
         )
 
+class FakeCacheService:
+    def __init__(self):
+        self.value = None
+
+    def get_answer(
+        self,
+        **kwargs,
+    ):
+        return self.value
+
+    def set_answer(
+        self,
+        *,
+        value,
+        **kwargs,
+    ):
+        self.value = value
+        return True
 
 def test_chat_service_returns_grounded_answer():
     service = ChatService(
@@ -91,3 +111,28 @@ def test_chat_service_returns_grounded_answer():
     assert "[SOURCE 1]" in result.answer
     assert result.cited_source_numbers == [1]
     assert result.sources[0]["cited_in_answer"] is True
+    assert result.cache_hit is False
+
+def test_second_chat_request_uses_cache():
+    fake_cache = FakeCacheService()
+
+    service = ChatService(
+        retrieval_pipeline=FakeRetrievalPipeline(),
+        context_builder=FakeContextBuilder(),
+        answer_service=FakeAnswerService(),
+        cache_service=fake_cache,
+    )
+
+    first = service.answer_question(
+        db=None,
+        question="Which dataset was used?",
+    )
+
+    second = service.answer_question(
+        db=None,
+        question="Which dataset was used?",
+    )
+
+    assert first.cache_hit is False
+    assert second.cache_hit is True
+    assert first.answer == second.answer

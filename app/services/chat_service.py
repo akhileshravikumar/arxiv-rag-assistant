@@ -9,6 +9,7 @@ from app.services.context_builder import ContextBuilder
 from app.services.retrieval_pipeline import (
     RetrievalPipeline,
 )
+from app.services.cache_service import CacheService
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class ChatResult:
     cited_source_numbers: list[int]
     context_character_count: int
     estimated_context_tokens: int
+    cache_hit: bool
 
 
 class ChatService:
@@ -28,18 +30,20 @@ class ChatService:
         retrieval_pipeline: RetrievalPipeline,
         context_builder: ContextBuilder,
         answer_service: AnswerGenerationService,
+        cache_service: CacheService | None = None,
     ) -> None:
         self.retrieval_pipeline = retrieval_pipeline
         self.context_builder = context_builder
         self.answer_service = answer_service
+        self.cache_service = cache_service
 
     def answer_question(
-        self,
-        db: Session,
-        question: str,
-        candidate_k: int = 20,
-        final_k: int = 5,
-    ) -> ChatResult:
+    self,
+    db: Session,
+    question: str,
+    candidate_k: int = 20,
+    final_k: int = 5,
+) -> ChatResult:
         cleaned_question = question.strip()
 
         if not cleaned_question:
@@ -53,6 +57,40 @@ class ChatService:
                 "than final_k."
             )
 
+        # 1. Check the final-answer cache first.
+        if self.cache_service is not None:
+            cached_answer = self.cache_service.get_answer(
+                question=cleaned_question,
+                candidate_k=candidate_k,
+                final_k=final_k,
+                model=self.answer_service.model,
+            )
+
+            if cached_answer is not None:
+                return ChatResult(
+                    question=cached_answer["question"],
+                    answer=cached_answer["answer"],
+                    model=cached_answer["model"],
+                    sources=cached_answer["sources"],
+                    cited_source_numbers=(
+                        cached_answer[
+                            "cited_source_numbers"
+                        ]
+                    ),
+                    context_character_count=(
+                        cached_answer[
+                            "context_character_count"
+                        ]
+                    ),
+                    estimated_context_tokens=(
+                        cached_answer[
+                            "estimated_context_tokens"
+                        ]
+                    ),
+                    cache_hit=True,
+                )
+
+        # 2. Run retrieval and reranking on a cache miss.
         reranked_chunks = (
             self.retrieval_pipeline.retrieve_and_rerank(
                 db=db,
@@ -62,6 +100,7 @@ class ChatService:
             )
         )
 
+        # 3. Build bounded, citation-ready context.
         context_result = self.context_builder.build(
             reranked_chunks
         )
@@ -71,6 +110,7 @@ class ChatService:
             for chunk in context_result.included_chunks
         }
 
+        # 4. Generate the grounded answer.
         generated_answer = (
             self.answer_service.generate_answer(
                 question=cleaned_question,
@@ -85,7 +125,8 @@ class ChatService:
             generated_answer.cited_source_numbers
         )
 
-        sources = []
+        # 5. Build structured source metadata.
+        sources: list[dict] = []
 
         for chunk in context_result.included_chunks:
             source_number = chunk["source_number"]
@@ -119,7 +160,7 @@ class ChatService:
                 }
             )
 
-        return ChatResult(
+        result = ChatResult(
             question=cleaned_question,
             answer=generated_answer.answer,
             model=generated_answer.model,
@@ -133,4 +174,31 @@ class ChatService:
             estimated_context_tokens=(
                 context_result.estimated_token_count
             ),
+            cache_hit=False,
         )
+
+        # 6. Cache the completed response.
+        if self.cache_service is not None:
+            self.cache_service.set_answer(
+                question=cleaned_question,
+                candidate_k=candidate_k,
+                final_k=final_k,
+                model=generated_answer.model,
+                value={
+                    "question": result.question,
+                    "answer": result.answer,
+                    "model": result.model,
+                    "sources": result.sources,
+                    "cited_source_numbers": (
+                        result.cited_source_numbers
+                    ),
+                    "context_character_count": (
+                        result.context_character_count
+                    ),
+                    "estimated_context_tokens": (
+                        result.estimated_context_tokens
+                    ),
+                },
+            )
+
+        return result

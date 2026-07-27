@@ -20,7 +20,12 @@ from app.services.ingestion_service import (
     IngestionService,
 )
 from app.services.redis_service import redis_service
-
+from app.services.cache_key_service import (
+    CacheKeyService,
+)
+from app.services.cache_service import (
+    CacheService,
+)
 
 MAX_RETRIES = int(
     os.getenv(
@@ -96,7 +101,10 @@ def ingest_arxiv_paper_task(
         )
 
         embedding_service = EmbeddingService()
-
+        cache_service = CacheService(
+            redis_service=redis_service,    
+            key_service=CacheKeyService(),
+        )
         ingestion_service = IngestionService(
             embedding_service=embedding_service
         )
@@ -105,6 +113,10 @@ def ingest_arxiv_paper_task(
             db=db,
             arxiv_id=normalized_id,
             progress_callback=report_progress,
+        )
+
+        new_corpus_version = (
+            cache_service.increment_corpus_version()
         )
 
         return {
@@ -120,6 +132,7 @@ def ingest_arxiv_paper_task(
             "embedded_chunk_count": (
                 result.embedded_chunk_count
             ),
+            "corpus_version": new_corpus_version,
             "requested_by_user_id": (
                 requested_by_user_id
             ),

@@ -54,6 +54,16 @@ from app.routers.ingestion import (
     router as ingestion_router,
 )
 
+from app.services.cache_key_service import (
+    CacheKeyService,
+)
+from app.services.cache_service import (
+    CacheService,
+)
+from app.services.redis_service import (
+    redis_service,
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -91,7 +101,15 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(ingestion_router)
 
-embedding_service = EmbeddingService()
+cache_key_service = CacheKeyService()
+
+cache_service = CacheService(
+    redis_service=redis_service,
+    key_service=cache_key_service,
+)
+embedding_service = EmbeddingService(
+    cache_service=cache_service
+)
 
 retrieval_service = RetrievalService(
     embedding_service=embedding_service
@@ -129,6 +147,7 @@ chat_service = ChatService(
     retrieval_pipeline=retrieval_pipeline,
     context_builder=context_builder,
     answer_service=answer_generation_service,
+    cache_service=cache_service,
 )
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -153,10 +172,20 @@ def read_root():
 def health_check(db: DatabaseSession):
     try:
         db.execute(text("SELECT 1"))
-
+        redis_healthy = redis_service.ping()
         return {
             "status": "healthy",
             "database": "connected",
+
+            "status": (
+            "healthy" if redis_healthy
+            else "degraded"
+            ),
+            "redis": (
+                "connected"
+                if redis_healthy
+                else "unavailable"
+            ),
         }
 
     except SQLAlchemyError:
@@ -497,6 +526,7 @@ def chat(
             "estimated_context_tokens": (
                 result.estimated_context_tokens
             ),
+            "cache_hit": result.cache_hit,
         }
 
     except ValueError as exc:

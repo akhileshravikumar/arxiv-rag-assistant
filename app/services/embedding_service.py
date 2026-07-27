@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 from sentence_transformers import SentenceTransformer
+from app.services.cache_service import CacheService 
 
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
@@ -12,12 +13,20 @@ QUERY_INSTRUCTION = (
 
 
 class EmbeddingService:
-    def __init__(self) -> None:
-        print(f"Loading embedding model: {EMBEDDING_MODEL_NAME}")
+    def __init__(
+        self,
+        cache_service: CacheService | None = None,
+    ) -> None:
+        print(
+            f"Loading embedding model: "
+            f"{EMBEDDING_MODEL_NAME}"
+        )
 
         self.model = SentenceTransformer(
             EMBEDDING_MODEL_NAME
         )
+
+        self.cache_service = cache_service
 
         print("Embedding model loaded.")
 
@@ -28,10 +37,31 @@ class EmbeddingService:
         """
         Generate an embedding for a search query.
         """
+
         cleaned_query = query.strip()
 
         if not cleaned_query:
-            raise ValueError("Search query cannot be empty.")
+            raise ValueError(
+                "Search query cannot be empty."
+            )
+
+        if self.cache_service is not None:
+            cached_embedding = (
+                self.cache_service
+                .get_query_embedding(
+                    query=cleaned_query,
+                    embedding_model=(
+                        EMBEDDING_MODEL_NAME
+                    ),
+                )
+            )
+
+            if cached_embedding is not None:
+                if (
+                    len(cached_embedding)
+                    == EMBEDDING_DIMENSION
+                ):
+                    return cached_embedding
 
         instructed_query = (
             f"{QUERY_INSTRUCTION}{cleaned_query}"
@@ -50,6 +80,15 @@ class EmbeddingService:
                 "Unexpected query embedding dimension: "
                 f"expected {EMBEDDING_DIMENSION}, "
                 f"received {len(vector)}."
+            )
+
+        if self.cache_service is not None:
+            self.cache_service.set_query_embedding(
+                query=cleaned_query,
+                embedding_model=(
+                    EMBEDDING_MODEL_NAME
+                ),
+                embedding=vector,
             )
 
         return vector

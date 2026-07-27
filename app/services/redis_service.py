@@ -1,7 +1,10 @@
+import json
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from redis import Redis
+from redis.exceptions import RedisError
 
 
 load_dotenv()
@@ -17,10 +20,112 @@ class RedisService:
         self.client = Redis.from_url(
             redis_url,
             decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            health_check_interval=30,
         )
 
     def ping(self) -> bool:
-        return bool(self.client.ping())
+        try:
+            return bool(self.client.ping())
+        except RedisError:
+            return False
+
+    def get_json(
+        self,
+        key: str,
+    ) -> dict[str, Any] | list[Any] | None:
+        """
+        Retrieve and deserialize a JSON cache value.
+        """
+        try:
+            raw_value = self.client.get(key)
+
+            if raw_value is None:
+                return None
+
+            return json.loads(raw_value)
+
+        except (
+            RedisError,
+            json.JSONDecodeError,
+        ):
+            return None
+
+    def set_json(
+        self,
+        key: str,
+        value: dict[str, Any] | list[Any],
+        ttl_seconds: int,
+    ) -> bool:
+        """
+        Serialize and cache a value with expiration.
+        """
+        if ttl_seconds < 1:
+            raise ValueError(
+                "ttl_seconds must be positive."
+            )
+
+        serialized_value = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+        try:
+            return bool(
+                self.client.set(
+                    name=key,
+                    value=serialized_value,
+                    ex=ttl_seconds,
+                )
+            )
+        except RedisError:
+            return False
+
+    def delete(
+        self,
+        key: str,
+    ) -> bool:
+        try:
+            return bool(
+                self.client.delete(key)
+            )
+        except RedisError:
+            return False
+
+    def get_integer(
+        self,
+        key: str,
+        default: int = 0,
+    ) -> int:
+        try:
+            raw_value = self.client.get(key)
+
+            if raw_value is None:
+                return default
+
+            return int(raw_value)
+
+        except (
+            RedisError,
+            TypeError,
+            ValueError,
+        ):
+            return default
+
+    def increment(
+        self,
+        key: str,
+    ) -> int:
+        try:
+            return int(
+                self.client.incr(key)
+            )
+        except RedisError as exc:
+            raise RuntimeError(
+                "Could not increment Redis value."
+            ) from exc
 
     def acquire_lock(
         self,
@@ -28,17 +133,17 @@ class RedisService:
         value: str,
         ttl_seconds: int,
     ) -> bool:
-        """
-        Acquire a lock only when it does not already exist.
-        """
-        return bool(
-            self.client.set(
-                name=key,
-                value=value,
-                nx=True,
-                ex=ttl_seconds,
+        try:
+            return bool(
+                self.client.set(
+                    name=key,
+                    value=value,
+                    nx=True,
+                    ex=ttl_seconds,
+                )
             )
-        )
+        except RedisError:
+            return False
 
     def release_lock(
         self,
@@ -46,14 +151,28 @@ class RedisService:
         expected_value: str,
     ) -> bool:
         """
-        Delete a lock only when the current task owns it.
+        Release a lock only when this caller still owns it.
         """
-        current_value = self.client.get(key)
+        release_script = """
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+        else
+            return 0
+        end
+        """
 
-        if current_value != expected_value:
+        try:
+            result = self.client.eval(
+                release_script,
+                1,
+                key,
+                expected_value,
+            )
+
+            return bool(result)
+
+        except RedisError:
             return False
-
-        return bool(self.client.delete(key))
 
 
 redis_service = RedisService()

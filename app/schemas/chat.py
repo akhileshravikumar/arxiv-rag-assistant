@@ -40,3 +40,4 @@ class ChatResponse(BaseModel):
     sources: list[ChatSource]
     context_character_count: int
     estimated_context_tokens: int
+    cache_hit: bool
