@@ -7,6 +7,7 @@ from fastapi import (
 
 from app.core.celery_app import celery_app
 from app.dependencies.auth import AdminUser
+from app.dependencies.rate_limit import RateLimitedAdminUser
 from app.schemas.ingestion import (
     IngestionRequest,
     IngestionSubmissionResponse,
@@ -30,7 +31,7 @@ router = APIRouter(
 )
 def submit_arxiv_ingestion(
     request: IngestionRequest,
-    admin_user: AdminUser,
+    admin_user: RateLimitedAdminUser,
 ):
     task = ingest_arxiv_paper_task.delay(
         arxiv_id=request.arxiv_id,

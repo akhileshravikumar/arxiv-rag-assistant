@@ -31,4 +31,9 @@ from app.schemas.ingestion import (
     TaskStatusResponse,
 )
 
+from app.schemas.errors import (
+    ErrorBody,
+    ErrorResponse,
+)
+
 __all__ = ["PaperCreate", "PaperResponse"]

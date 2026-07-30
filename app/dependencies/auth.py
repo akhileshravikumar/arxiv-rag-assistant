@@ -9,6 +9,9 @@ from app.database.database import get_db
 from app.models.user import User
 from app.services.token_service import TokenService
 
+from app.core.request_context import (
+    user_id_context,
+)
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/auth/login"
@@ -68,6 +71,8 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive.",
         )
+
+    user_id_context.set(user.id)
 
     return user
 

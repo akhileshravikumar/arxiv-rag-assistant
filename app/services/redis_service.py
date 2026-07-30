@@ -6,9 +6,17 @@ from dotenv import load_dotenv
 from redis import Redis
 from redis.exceptions import RedisError
 
+from dataclasses import dataclass
+
 
 load_dotenv()
 
+@dataclass(frozen=True)
+class RateLimitResult:
+    allowed: bool
+    limit: int
+    remaining: int
+    retry_after_seconds: int
 
 class RedisService:
     def __init__(self) -> None:
@@ -173,6 +181,81 @@ class RedisService:
 
         except RedisError:
             return False
+
+    def check_rate_limit(
+    self,
+    *,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> RateLimitResult:
+        if limit < 1:
+            raise ValueError(
+                "Rate-limit value must be positive."
+            )
+
+        if window_seconds < 1:
+            raise ValueError(
+                "Rate-limit window must be positive."
+            )
+
+        script = """
+        local current = redis.call(
+            "INCR",
+            KEYS[1]
+        )
+
+        if current == 1 then
+            redis.call(
+                "EXPIRE",
+                KEYS[1],
+                ARGV[1]
+            )
+        end
+
+        local ttl = redis.call(
+            "TTL",
+            KEYS[1]
+        )
+
+        return {
+            current,
+            ttl
+        }
+        """
+
+        try:
+            result = self.client.eval(
+                script,
+                1,
+                key,
+                window_seconds,
+            )
+
+            current_count = int(result[0])
+            ttl = max(
+                int(result[1]),
+                0,
+            )
+
+            remaining = max(
+                limit - current_count,
+                0,
+            )
+
+            return RateLimitResult(
+                allowed=(
+                    current_count <= limit
+                ),
+                limit=limit,
+                remaining=remaining,
+                retry_after_seconds=ttl,
+            )
+
+        except RedisError as exc:
+            raise RuntimeError(
+                "Rate-limit service unavailable."
+            ) from exc
 
 
 redis_service = RedisService()

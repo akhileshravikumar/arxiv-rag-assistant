@@ -12,6 +12,7 @@ from app.database.database import (
     engine,
     get_db,
 )
+from app.middleware.request_logging import RequestLoggingMiddleware
 from app.models import Chunk, Paper, User
 from app.schemas.paper import PaperCreate, PaperResponse
 
@@ -24,6 +25,10 @@ from app.schemas.search import (
     HybridSearchResponse,
     RerankedSearchResponse,
     RerankedSearchRequest
+)
+
+from app.schemas.errors import (
+    ErrorResponse,
 )
 from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.embedding_service import EmbeddingService
@@ -46,7 +51,9 @@ from app.services.chat_service import ChatService
 from app.models.user import User
 from app.routers.auth import router as auth_router
 
-from app.dependencies.auth import CurrentUser
+from app.dependencies.rate_limit import (
+    RateLimitedChatUser,
+)
 
 from app.dependencies.auth import AdminUser
 
@@ -64,6 +71,22 @@ from app.services.redis_service import (
     redis_service,
 )
 
+from app.core.logging_config import (
+    configure_logging,
+)
+
+
+configure_logging()
+import logging
+
+
+logger = logging.getLogger(__name__)
+
+from app.core.exception_handlers import (
+    register_exception_handlers,
+)
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,8 +101,13 @@ async def lifespan(app: FastAPI):
                 bm25_service.build_index(db)
             )
 
-        print("Database connection successful.")
-        print(
+        logger.info(
+            "Database connection successful",
+            extra={
+                "event": "database_connected",
+            },
+        )
+        logger.info(
             f"BM25 index built from "
             f"{indexed_documents} chunks."
         )
@@ -100,6 +128,10 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(ingestion_router)
+app.add_middleware(
+    RequestLoggingMiddleware
+)
+register_exception_handlers(app)
 
 cache_key_service = CacheKeyService()
 
@@ -489,11 +521,37 @@ def reranked_search(
         "Answer a question using retrieved "
         "research-paper evidence"
     ),
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": (
+                "Authentication required"
+            ),
+        },
+        429: {
+            "model": ErrorResponse,
+            "description": (
+                "Rate limit exceeded"
+            ),
+        },
+        500: {
+            "model": ErrorResponse,
+            "description": (
+                "Unexpected server error"
+            ),
+        },
+        503: {
+            "model": ErrorResponse,
+            "description": (
+                "Required service unavailable"
+            ),
+        },
+    },
 )
 def chat(
     request: ChatRequest,
     db: DatabaseSession,
-    current_user: CurrentUser,
+    current_user: RateLimitedChatUser,
 ):
     if request.final_k > request.candidate_k:
         raise HTTPException(
@@ -544,7 +602,12 @@ def chat(
         ) from exc
 
     except Exception as exc:
-        print(f"Unexpected chat error: {exc}")
+        logger.exception(
+            "Unexpected chat error",
+            extra={
+                "event": "chat_failed",
+            },
+        )
 
         raise HTTPException(
             status_code=(
