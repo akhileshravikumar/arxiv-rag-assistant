@@ -1,14 +1,12 @@
 fastapi
 
-uvicorn[standard]
+uvicorn
 
 sqlalchemy
 
-psycopg2-binary
+psycopg[binary]
 
 python-dotenv
-
-pydantic
 
 requests
 
@@ -22,7 +20,7 @@ sentence-transformers
 
 pytest
 
-rank-mb25
+rank-bm25
 
 openai
 
@@ -34,7 +32,7 @@ python-multipart
 
 pydantic[email]
 
-httpx2
+httpx
 
 celery[redis]
 

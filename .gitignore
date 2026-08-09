@@ -16,3 +16,5 @@ data/processed/extracted_text/*
 
 data/processed/chunks/*
 !data/processed/chunks/.gitkeep
+
+.env.docker

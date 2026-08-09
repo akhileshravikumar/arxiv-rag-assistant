@@ -1,37 +1,149 @@
 services:
-
   postgres:
-
     image: pgvector/pgvector:pg16
-
     container_name: arxiv-postgres
 
-    restart: unless-stopped
-
     environment:
+      POSTGRES_DB: arxiv_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: arxiv_db
 
     ports:
       - "5432:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d arxiv_db"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
 
   redis:
     image: redis:7-alpine
     container_name: arxiv-redis
+
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes"
+      ]
+
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+
     volumes:
       - redis_data:/data
+
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+
+    restart: unless-stopped
+
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: arxiv-api
+
+    env_file:
+      - .env.docker
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./data:/app/data
+      - huggingface_cache:/root/.cache/huggingface
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ]
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:8000/health"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+    restart: unless-stopped
+
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: arxiv-celery-worker
+
+    env_file:
+      - .env.docker
+
+    volumes:
+      - ./data:/app/data
+      - huggingface_cache:/root/.cache/huggingface
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    command:
+      [
+        "celery",
+        "-A",
+        "app.core.celery_app.celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--concurrency=1"
+      ]
+
+    restart: unless-stopped
+
+
 volumes:
   postgres_data:
   redis_data:
+  huggingface_cache:

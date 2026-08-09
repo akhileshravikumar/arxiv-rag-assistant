@@ -198,34 +198,88 @@ def read_root():
 
 @app.get(
     "/health",
-    tags=["Health"],
-    summary="Check API and database health",
+    tags=["System"],
 )
-def health_check(db: DatabaseSession):
+def health_check():
+    database_healthy = False
+    redis_healthy = False
+
     try:
-        db.execute(text("SELECT 1"))
-        redis_healthy = redis_service.ping()
-        return {
-            "status": "healthy",
-            "database": "connected",
+        with engine.connect() as connection:
+            connection.execute(
+                text("SELECT 1")
+            )
 
-            "status": (
-            "healthy" if redis_healthy
-            else "degraded"
-            ),
-            "redis": (
-                "connected"
-                if redis_healthy
-                else "unavailable"
-            ),
-        }
+        database_healthy = True
 
-    except SQLAlchemyError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection failed",
+    except Exception:
+        logger.exception(
+            "Database health check failed",
+            extra={
+                "event": (
+                    "database_health_failed"
+                )
+            },
         )
 
+    redis_healthy = redis_service.ping()
+
+    healthy = (
+        database_healthy
+        and redis_healthy
+    )
+
+    return {
+        "status": (
+            "healthy"
+            if healthy
+            else "degraded"
+        ),
+        "database": (
+            "connected"
+            if database_healthy
+            else "unavailable"
+        ),
+        "redis": (
+            "connected"
+            if redis_healthy
+            else "unavailable"
+        ),
+    }
+
+
+@app.get(
+    "/ready",
+    tags=["System"],
+)
+def readiness_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(
+                text("SELECT 1")
+            )
+
+        database_ready = True
+
+    except Exception:
+        database_ready = False
+
+    redis_ready = redis_service.ping()
+
+    if not (
+        database_ready
+        and redis_ready
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Application is not ready.",
+        )
+
+    return {
+        "status": "ready",
+        "database": "connected",
+        "redis": "connected",
+    }
 
 @app.post(
     "/papers",
