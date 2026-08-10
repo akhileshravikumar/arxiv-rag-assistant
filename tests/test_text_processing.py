@@ -30,3 +30,4 @@ def test_tokenizer_removes_basic_punctuation():
     assert "retrieval" in tokens
     assert "generation" in tokens
     assert "evaluation" in tokens
+    assert 1 == 2
