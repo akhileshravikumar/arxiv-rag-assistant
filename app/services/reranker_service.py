@@ -3,7 +3,10 @@ from collections.abc import Sequence
 from sentence_transformers import CrossEncoder
 
 
-RERANKER_MODEL_NAME = "BAAI/bge-reranker-large"
+# Small cross-encoder for the free-tier hosted deployment (~90MB vs
+# ~1.3GB for bge-reranker-large), to keep total memory under Render's
+# free 512MB instance limit.
+RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 class RerankerService:

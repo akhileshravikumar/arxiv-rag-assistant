@@ -80,10 +80,10 @@ Build a production-grade RAG system for arXiv papers featuring:
 
 ### AI
 **Embeddings**
-- BAAI `bge-large-en-v1.5`
+- BAAI `bge-small-en-v1.5` (384-dim, swapped in from `bge-large-en-v1.5` for the free-tier hosted deployment)
 
 **Reranker**
-- BAAI `bge-reranker-large`
+- `cross-encoder/ms-marco-MiniLM-L-6-v2` (swapped in from BAAI `bge-reranker-large` for the free-tier hosted deployment)
 
 **LLM**
 - GPT-4.1

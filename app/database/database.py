@@ -10,13 +10,23 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 load_dotenv()
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
 
 if not DATABASE_URL:
     raise RuntimeError(
-        "DATABASE_URL is not set. Add it to the project's .env file."
+        "DATABASE_URL is not configured."
     )
 
+if DATABASE_URL.startswith(
+    "postgresql://"
+):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
+        "postgresql+psycopg://",
+        1,
+    )
 
 # The engine manages connections to PostgreSQL.
 engine = create_engine(

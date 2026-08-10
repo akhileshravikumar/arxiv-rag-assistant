@@ -10,7 +10,7 @@ class FakeEmbeddingService:
                 "Search query cannot be empty."
             )
 
-        return [0.0] * 1024
+        return [0.0] * 384
 
 
 def test_empty_query_is_rejected():

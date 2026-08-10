@@ -57,9 +57,12 @@ from app.dependencies.rate_limit import (
 
 from app.dependencies.auth import AdminUser
 
-from app.routers.ingestion import (
-    router as ingestion_router,
-)
+# Ingestion router is Celery-backed. Commented out (not deleted) for the
+# free-tier Render deployment, which doesn't run a Celery worker. The
+# full async ingestion pipeline still runs in the Docker Compose stack.
+# from app.routers.ingestion import (
+#     router as ingestion_router,
+# )
 
 from app.services.cache_key_service import (
     CacheKeyService,
@@ -114,8 +117,10 @@ async def lifespan(app: FastAPI):
             dense_service=retrieval_service,
             bm25_service=bm25_service,
         )
+        # Uses RerankerService's default model_name
+        # (see app/services/reranker_service.py) so the small,
+        # free-tier reranker is picked up automatically.
         reranker_service = RerankerService(
-            model_name="BAAI/bge-reranker-large",
             max_length=512,
         )
 
@@ -174,7 +179,8 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
-app.include_router(ingestion_router)
+# Excluded from the hosted free-tier demo — see import comment above.
+# app.include_router(ingestion_router)
 app.add_middleware(
     RequestLoggingMiddleware
 )

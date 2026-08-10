@@ -4,8 +4,11 @@ from sentence_transformers import SentenceTransformer
 from app.services.cache_service import CacheService 
 
 
-EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
-EMBEDDING_DIMENSION = 1024
+# Small model for the free-tier hosted deployment (~130MB vs ~1.3GB
+# for bge-large). Trades some retrieval quality for a much smaller
+# memory footprint so the app fits in Render's free 512MB instance.
+EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBEDDING_DIMENSION = 384
 
 QUERY_INSTRUCTION = (
     "Represent this sentence for searching relevant passages: "
