@@ -90,11 +90,58 @@ from app.core.exception_handlers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global embedding_service, retrieval_service, bm25_service
+    global hybrid_retrieval_service, reranker_service, context_builder
+    global retrieval_pipeline, answer_generation_service, chat_service
+
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
         Base.metadata.create_all(bind=engine)
+
+        embedding_service = EmbeddingService(
+            cache_service=cache_service
+        )
+
+        retrieval_service = RetrievalService(
+            embedding_service=embedding_service
+        )
+
+        bm25_service = BM25Service()
+
+        hybrid_retrieval_service = HybridRetrievalService(
+            dense_service=retrieval_service,
+            bm25_service=bm25_service,
+        )
+        reranker_service = RerankerService(
+            model_name="BAAI/bge-reranker-large",
+            max_length=512,
+        )
+
+        context_builder = ContextBuilder(
+            max_context_characters=12_000,
+            max_chunk_characters=3_000,
+        )
+
+        retrieval_pipeline = RetrievalPipeline(
+            hybrid_service=hybrid_retrieval_service,
+            reranker_service=reranker_service,
+            context_builder=context_builder,
+            candidate_k=20,
+            final_k=5,
+        )
+
+        answer_generation_service = (
+            AnswerGenerationService()
+        )
+
+        chat_service = ChatService(
+            retrieval_pipeline=retrieval_pipeline,
+            context_builder=context_builder,
+            answer_service=answer_generation_service,
+            cache_service=cache_service,
+        )
 
         with SessionLocal() as db:
             indexed_documents = (
@@ -139,48 +186,19 @@ cache_service = CacheService(
     redis_service=redis_service,
     key_service=cache_key_service,
 )
-embedding_service = EmbeddingService(
-    cache_service=cache_service
-)
-
-retrieval_service = RetrievalService(
-    embedding_service=embedding_service
-)
-
-bm25_service = BM25Service()
-
-hybrid_retrieval_service = HybridRetrievalService(
-    dense_service=retrieval_service,
-    bm25_service=bm25_service,
-)
-reranker_service = RerankerService(
-    model_name="BAAI/bge-reranker-large",
-    max_length=512,
-)
-
-context_builder = ContextBuilder(
-    max_context_characters=12_000,
-    max_chunk_characters=3_000,
-)
-
-retrieval_pipeline = RetrievalPipeline(
-    hybrid_service=hybrid_retrieval_service,
-    reranker_service=reranker_service,
-    context_builder=context_builder,
-    candidate_k=20,
-    final_k=5,
-)
-
-answer_generation_service = (
-    AnswerGenerationService()
-)
-
-chat_service = ChatService(
-    retrieval_pipeline=retrieval_pipeline,
-    context_builder=context_builder,
-    answer_service=answer_generation_service,
-    cache_service=cache_service,
-)
+# Heavy / model-loading services are instantiated inside the
+# `lifespan` startup handler above so they are not loaded at
+# import time (e.g. during test collection in CI). They stay
+# None until the app actually starts.
+embedding_service = None
+retrieval_service = None
+bm25_service = None
+hybrid_retrieval_service = None
+reranker_service = None
+context_builder = None
+retrieval_pipeline = None
+answer_generation_service = None
+chat_service = None
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -669,4 +687,3 @@ def chat(
             ),
             detail="Answer generation failed.",
         ) from exc
-    
