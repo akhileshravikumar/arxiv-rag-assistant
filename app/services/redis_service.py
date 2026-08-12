@@ -18,6 +18,27 @@ class RateLimitResult:
     remaining: int
     retry_after_seconds: int
 
+class RedisUnavailableError(RuntimeError):
+    """Raised when Redis cannot be reached for a required read."""
+
+
+# A hosted Redis sits across the internet behind TLS, so the three
+# second timeout that suits a local container is far too tight.
+REDIS_CONNECT_TIMEOUT_SECONDS = int(
+    os.getenv(
+        "REDIS_CONNECT_TIMEOUT_SECONDS",
+        "10",
+    )
+)
+
+REDIS_SOCKET_TIMEOUT_SECONDS = int(
+    os.getenv(
+        "REDIS_SOCKET_TIMEOUT_SECONDS",
+        "10",
+    )
+)
+
+
 class RedisService:
     def __init__(self) -> None:
         redis_url = os.getenv(
@@ -28,8 +49,13 @@ class RedisService:
         self.client = Redis.from_url(
             redis_url,
             decode_responses=True,
-            socket_connect_timeout=3,
-            socket_timeout=3,
+            socket_connect_timeout=(
+                REDIS_CONNECT_TIMEOUT_SECONDS
+            ),
+            socket_timeout=(
+                REDIS_SOCKET_TIMEOUT_SECONDS
+            ),
+            retry_on_timeout=True,
             health_check_interval=30,
         )
 
@@ -58,6 +84,33 @@ class RedisService:
             RedisError,
             json.JSONDecodeError,
         ):
+            return None
+
+    def get_json_strict(
+        self,
+        key: str,
+    ) -> dict[str, Any] | list[Any] | None:
+        """
+        Read a value, distinguishing "absent" from "unreachable".
+
+        get_json() returns None for both, which is fine for a cache but
+        wrong for state the API reports on: a Redis blip would otherwise
+        be indistinguishable from an expired job.
+        """
+        try:
+            raw_value = self.client.get(key)
+
+        except RedisError as exc:
+            raise RedisUnavailableError(
+                "The job store is temporarily unavailable."
+            ) from exc
+
+        if raw_value is None:
+            return None
+
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError:
             return None
 
     def set_json(

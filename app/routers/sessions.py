@@ -35,10 +35,10 @@ from app.services.arxiv_service import (
 )
 
 
-router = APIRouter(
-    prefix="/sessions",
-    tags=["Sessions"],
-)
+# Paths are written out in full rather than assembled from a router
+# prefix. A prefixed router needs an empty path string for the
+# collection route, which does not reliably resolve.
+router = APIRouter(tags=["Sessions"])
 
 
 DatabaseSession = Annotated[
@@ -94,7 +94,7 @@ def build_session_payload(
 
 
 @router.post(
-    "",
+    "/sessions",
     response_model=SessionResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[
@@ -116,7 +116,7 @@ def create_session(
 
 
 @router.get(
-    "/{session_id}",
+    "/sessions/{session_id}",
     response_model=SessionDetailResponse,
     summary="Get a session and its papers",
 )
@@ -140,7 +140,7 @@ def get_session(
 
 
 @router.delete(
-    "/{session_id}",
+    "/sessions/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a session and everything in it",
 )
@@ -162,7 +162,7 @@ def delete_session(
 
 
 @router.get(
-    "/{session_id}/arxiv/search",
+    "/sessions/{session_id}/arxiv/search",
     response_model=ArxivSearchResponse,
     summary="Preview arXiv results before ingesting",
 )
@@ -239,7 +239,7 @@ def search_arxiv_candidates(
 
 
 @router.get(
-    "/{session_id}/papers",
+    "/sessions/{session_id}/papers",
     response_model=list[PaperResponse],
     summary="List the session's papers",
 )
@@ -251,7 +251,7 @@ def list_papers(
 
 
 @router.patch(
-    "/{session_id}/papers/{paper_id}",
+    "/sessions/{session_id}/papers/{paper_id}",
     response_model=PaperResponse,
     summary="Rename a paper",
 )
@@ -277,13 +277,12 @@ def rename_paper(
     paper.title = request.title.strip()
 
     db.commit()
-    db.refresh(paper)
 
     return paper
 
 
 @router.get(
-    "/{session_id}/papers/bibtex",
+    "/sessions/{session_id}/papers/bibtex",
     response_class=PlainTextResponse,
     summary="Download the session's references as BibTeX",
 )

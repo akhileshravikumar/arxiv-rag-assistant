@@ -14,8 +14,8 @@ from app.core.exception_handlers import (
 from app.core.logging_config import configure_logging
 from app.database.database import (
     Base,
-    SessionLocal,
-    engine,
+    get_engine,
+    get_session_factory,
 )
 from app.middleware.request_logging import (
     RequestLoggingMiddleware,
@@ -53,6 +53,8 @@ def allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    engine = get_engine()
+
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
 
@@ -125,7 +127,7 @@ def health_check():
     expired_removed = 0
 
     try:
-        with SessionLocal() as db:
+        with get_session_factory()() as db:
             db.execute(text("SELECT 1"))
 
             # Free tiers have no scheduler, so the keep-alive ping
@@ -174,7 +176,7 @@ def health_check():
 )
 def readiness_check():
     try:
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             connection.execute(text("SELECT 1"))
 
         database_ready = True

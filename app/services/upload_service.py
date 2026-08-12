@@ -57,10 +57,16 @@ def sanitize_upload_filename(
         candidate,
     ).strip()
 
-    if not candidate.lower().endswith(".pdf"):
-        candidate = f"{candidate}.pdf"
+    stem = candidate.removesuffix(".pdf").removesuffix(
+        ".PDF"
+    )
 
-    return candidate[:255] or "upload.pdf"
+    # A name that is empty once sanitized, or that was nothing but an
+    # extension, has no usable stem to build on.
+    if not stem.strip(". "):
+        return "upload.pdf"
+
+    return f"{stem[:250]}.pdf"
 
 
 def create_upload_directory() -> Path:

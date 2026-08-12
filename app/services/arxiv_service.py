@@ -1,13 +1,38 @@
+import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
 import requests
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
+
+# The arXiv API is frequently slow under load. A single long timeout
+# just holds the request open; a shorter one with a retry recovers from
+# the common case of one sluggish response.
+ARXIV_TIMEOUT_SECONDS = int(
+    os.getenv(
+        "ARXIV_TIMEOUT_SECONDS",
+        "20",
+    )
+)
+
+ARXIV_MAX_ATTEMPTS = int(
+    os.getenv(
+        "ARXIV_MAX_ATTEMPTS",
+        "3",
+    )
+)
+
+ARXIV_RETRY_DELAY_SECONDS = 2
 
 NAMESPACES = {
     "atom": "http://www.w3.org/2005/Atom",
@@ -228,27 +253,60 @@ def parse_entries(
 
 def request_arxiv(
     query_url: str,
-    timeout_seconds: int = 30,
+    timeout_seconds: int = ARXIV_TIMEOUT_SECONDS,
+    max_attempts: int = ARXIV_MAX_ATTEMPTS,
 ) -> list[dict]:
-    try:
-        response = requests.get(
-            query_url,
-            headers=HEADERS,
-            timeout=timeout_seconds,
-        )
-        response.raise_for_status()
+    last_error: Exception | None = None
 
-    except requests.Timeout as exc:
-        raise RuntimeError(
-            "The arXiv API request timed out."
-        ) from exc
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(
+                query_url,
+                headers=HEADERS,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
 
-    except requests.RequestException as exc:
-        raise RuntimeError(
-            f"The arXiv API request failed: {exc}"
-        ) from exc
+            return parse_entries(response.content)
 
-    return parse_entries(response.content)
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+        ) as exc:
+            last_error = exc
+
+        except requests.HTTPError as exc:
+            status_code = (
+                exc.response.status_code
+                if exc.response is not None
+                else None
+            )
+
+            # Retry only what a retry can fix.
+            if status_code and status_code < 500:
+                raise RuntimeError(
+                    f"The arXiv API rejected the request "
+                    f"(HTTP {status_code})."
+                ) from exc
+
+            last_error = exc
+
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"The arXiv API request failed: {exc}"
+            ) from exc
+
+        if attempt < max_attempts:
+            time.sleep(
+                ARXIV_RETRY_DELAY_SECONDS * attempt
+            )
+
+    raise RuntimeError(
+        f"The arXiv API did not respond after "
+        f"{max_attempts} attempts "
+        f"({timeout_seconds}s each). It may be "
+        f"temporarily unavailable."
+    ) from last_error
 
 
 def search_arxiv(

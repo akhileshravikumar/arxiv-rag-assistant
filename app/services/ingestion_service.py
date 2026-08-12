@@ -410,7 +410,6 @@ class IngestionService:
             report("saving", 95)
 
             db.commit()
-            db.refresh(paper)
 
         except Exception:
             db.rollback()

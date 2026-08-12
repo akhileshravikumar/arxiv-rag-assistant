@@ -79,14 +79,20 @@ class SessionService:
     ) -> ResearchSession:
         self.purge_expired(db)
 
+        now = self._now()
+
+        # Timestamps are set here rather than left to the column's
+        # server default so the object is complete after commit and
+        # needs no refresh. See touch() for why that matters.
         session = ResearchSession(
             id=uuid.uuid4().hex,
+            created_at=now,
+            last_seen_at=now,
             expires_at=self._expiry(),
         )
 
         db.add(session)
         db.commit()
-        db.refresh(session)
 
         return session
 
@@ -122,12 +128,17 @@ class SessionService:
     ) -> ResearchSession:
         """
         Extend a session's life on activity.
+
+        Deliberately no refresh() after commit. The session factory sets
+        expire_on_commit=False, so attributes stay loaded, and refresh()
+        would open a fresh transaction that stays checked out for the
+        rest of the request -- including across slow external calls,
+        where a serverless database will drop it underneath us.
         """
         session.last_seen_at = self._now()
         session.expires_at = self._expiry()
 
         db.commit()
-        db.refresh(session)
 
         return session
 

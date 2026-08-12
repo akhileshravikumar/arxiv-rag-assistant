@@ -14,7 +14,10 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.container import ServiceContainer
-from app.database.database import SessionLocal, get_db
+from app.database.database import (
+    get_db,
+    get_session_factory,
+)
 from app.dependencies.rate_limit import (
     limit_ingestion_requests,
 )
@@ -34,6 +37,9 @@ from app.services.ingestion_service import (
     PendingPaper,
     cleanup_directory,
     create_download_directory,
+)
+from app.services.redis_service import (
+    RedisUnavailableError,
 )
 from app.services.upload_service import (
     InvalidUploadError,
@@ -87,7 +93,7 @@ def run_ingestion(
 
     job_service.start(job)
 
-    db = SessionLocal()
+    db = get_session_factory()()
 
     try:
         for index, pending in enumerate(
@@ -396,7 +402,21 @@ def get_job_status(
     job_id: str,
     services: Services,
 ):
-    job = services.job_service.get(job_id)
+    try:
+        job = services.job_service.get(job_id)
+
+    except RedisUnavailableError as exc:
+        # Distinct from 404 on purpose: the job may be running fine and
+        # the client should keep polling rather than give up.
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=(
+                "The job store is temporarily "
+                "unavailable. Retry shortly."
+            ),
+        ) from exc
 
     if job is None:
         raise HTTPException(

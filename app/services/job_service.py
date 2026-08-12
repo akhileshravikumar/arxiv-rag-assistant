@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,8 @@ from app.services.redis_service import RedisService
 
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 JOB_TTL_SECONDS = int(
@@ -96,17 +99,29 @@ class JobService:
             self._now().isoformat()
         )
 
-        self.redis_service.set_json(
+        written = self.redis_service.set_json(
             key=self._key(job["job_id"]),
             value=job,
             ttl_seconds=JOB_TTL_SECONDS,
         )
 
+        if not written:
+            # Ingestion itself continues; only the progress report is
+            # lost. If writes keep failing the heartbeat stops advancing
+            # and the job is reported stale, which is accurate.
+            logger.warning(
+                "Could not persist job progress",
+                extra={
+                    "event": "job_write_failed",
+                    "job_id": job["job_id"],
+                },
+            )
+
     def get(
         self,
         job_id: str,
     ) -> dict[str, Any] | None:
-        job = self.redis_service.get_json(
+        job = self.redis_service.get_json_strict(
             self._key(job_id)
         )
 

@@ -37,6 +37,26 @@ def test_missing_filename_gets_a_default():
     )
 
 
+def test_name_that_sanitizes_to_nothing_gets_a_default():
+    # Every character is stripped, leaving no stem to build on.
+    assert (
+        sanitize_upload_filename("???.pdf")
+        == "upload.pdf"
+    )
+
+    assert (
+        sanitize_upload_filename("   ")
+        == "upload.pdf"
+    )
+
+
+def test_existing_extension_is_not_duplicated():
+    assert (
+        sanitize_upload_filename("paper.pdf")
+        == "paper.pdf"
+    )
+
+
 def test_empty_file_is_rejected(tmp_path):
     with pytest.raises(
         InvalidUploadError,
