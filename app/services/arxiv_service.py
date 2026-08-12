@@ -1,6 +1,4 @@
-import json
 import re
-import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from pathlib import Path
@@ -430,113 +428,55 @@ def download_arxiv_paper(
     return processed_paper
 
 
-def process_papers(
-    papers: list[dict],
-    raw_data_directory: Path,
-    delay_seconds: int = 3,
-) -> list[dict]:
-    processed_papers: list[dict] = []
+def build_bibtex_entry(
+    paper: dict,
+) -> str:
+    """
+    Render one BibTeX record from stored paper metadata.
+    """
+    authors = paper.get("authors") or [
+        "Unknown"
+    ]
 
-    for index, paper in enumerate(
-        papers,
-        start=1,
-    ):
-        try:
-            processed_paper = (
-                download_arxiv_paper(
-                    paper=paper,
-                    raw_data_directory=(
-                        raw_data_directory
-                    ),
-                )
-            )
+    arxiv_id = paper.get("arxiv_id")
+    published = paper.get("published")
 
-        except RuntimeError as exc:
-            processed_paper = dict(paper)
-            processed_paper[
-                "download_status"
-            ] = "failed"
-            processed_paper[
-                "download_error"
-            ] = str(exc)
+    year = (
+        str(published)[:4]
+        if published
+        else "n.d."
+    )
 
-        processed_papers.append(
-            processed_paper
+    first_author = (
+        authors[0].split()[-1].lower()
+        if authors
+        else "unknown"
+    )
+
+    citation_key = re.sub(
+        r"[^a-z0-9]",
+        "",
+        f"{first_author}{year}",
+    ) or "paper"
+
+    lines = [
+        f"@article{{{citation_key},",
+        f"  title   = {{{paper.get('title', 'Untitled')}}},",
+        f"  author  = {{{' and '.join(authors)}}},",
+        f"  year    = {{{year}}},",
+    ]
+
+    if arxiv_id:
+        lines.append(
+            f"  eprint  = {{{arxiv_id}}},"
+        )
+        lines.append(
+            "  archivePrefix = {arXiv},"
+        )
+        lines.append(
+            f"  url     = {{https://arxiv.org/abs/{arxiv_id}}},"
         )
 
-        if (
-            index < len(papers)
-            and delay_seconds > 0
-        ):
-            time.sleep(delay_seconds)
+    lines.append("}")
 
-    return processed_papers
-
-
-def load_existing_metadata(
-    metadata_file: Path,
-) -> list[dict]:
-    if not metadata_file.exists():
-        return []
-
-    try:
-        with metadata_file.open(
-            "r",
-            encoding="utf-8",
-        ) as file:
-            content = json.load(file)
-
-    except (
-        json.JSONDecodeError,
-        OSError,
-    ) as exc:
-        raise RuntimeError(
-            f"Could not read metadata file: "
-            f"{metadata_file}"
-        ) from exc
-
-    return content if isinstance(content, list) else []
-
-
-def save_metadata(
-    new_papers: list[dict],
-    metadata_file: Path,
-) -> None:
-    metadata_file.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    existing_papers = load_existing_metadata(
-        metadata_file
-    )
-
-    papers_by_id = {
-        paper["arxiv_id"]: paper
-        for paper in existing_papers
-        if paper.get("arxiv_id")
-    }
-
-    for paper in new_papers:
-        arxiv_id = paper.get("arxiv_id")
-
-        if arxiv_id:
-            papers_by_id[arxiv_id] = paper
-
-    try:
-        with metadata_file.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                list(papers_by_id.values()),
-                file,
-                indent=2,
-                ensure_ascii=False,
-            )
-
-    except OSError as exc:
-        raise RuntimeError(
-            f"Could not save metadata file: "
-            f"{metadata_file}"
-        ) from exc
+    return "\n".join(lines)

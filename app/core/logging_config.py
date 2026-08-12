@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from app.core.request_context import (
     get_request_id,
-    get_user_id,
+    get_session_id,
 )
 
 
@@ -56,7 +56,7 @@ class JsonLogFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
             "request_id": get_request_id(),
-            "user_id": get_user_id(),
+            "session_id": get_session_id(),
         }
 
         for key, value in record.__dict__.items():

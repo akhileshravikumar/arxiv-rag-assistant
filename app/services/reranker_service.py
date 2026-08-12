@@ -1,92 +1,75 @@
+import logging
+import os
 from collections.abc import Sequence
 
-from sentence_transformers import CrossEncoder
+import httpx
+from dotenv import load_dotenv
 
 
-# Small cross-encoder for the free-tier hosted deployment (~90MB vs
-# ~1.3GB for bge-reranker-large), to keep total memory under Render's
-# free 512MB instance limit.
-RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
+
+RERANKER_MODEL_NAME = os.getenv(
+    "RERANKER_MODEL",
+    "rerank-v3.5",
+)
+
+RERANKER_TIMEOUT_SECONDS = int(
+    os.getenv(
+        "RERANKER_TIMEOUT_SECONDS",
+        "15",
+    )
+)
 
 
 class RerankerService:
+    """
+    Cross-encoder reranking over a hosted API.
+
+    Without an API key the service degrades to a pass-through that
+    preserves the incoming Reciprocal Rank Fusion order, so the whole
+    pipeline still works on a deployment with no reranker configured.
+    """
+
     def __init__(
         self,
+        api_key: str | None = None,
         model_name: str = RERANKER_MODEL_NAME,
-        max_length: int = 512,
-        device: str | None = None,
+        timeout_seconds: int = (
+            RERANKER_TIMEOUT_SECONDS
+        ),
     ) -> None:
-        print(f"Loading reranker model: {model_name}")
-
-        self.model = CrossEncoder(
-            model_name,
-            max_length=max_length,
-            device=device,
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else os.getenv("COHERE_API_KEY")
         )
 
-        print("Reranker model loaded.")
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
 
-    def rerank(
-        self,
-        query: str,
-        candidates: Sequence[dict],
-        top_k: int = 5,
-        batch_size: int = 8,
+        if not self.api_key:
+            logger.info(
+                "Reranker disabled; falling back to fusion order",
+                extra={
+                    "event": "reranker_disabled"
+                },
+            )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+    @staticmethod
+    def _finalize(
+        results: list[dict],
+        top_k: int,
     ) -> list[dict]:
-        """
-        Score query–chunk pairs and return the strongest chunks.
-        """
-        cleaned_query = query.strip()
-
-        if not cleaned_query:
-            raise ValueError("Query cannot be empty.")
-
-        if top_k < 1:
-            raise ValueError("top_k must be at least 1.")
-
-        if batch_size < 1:
-            raise ValueError(
-                "batch_size must be at least 1."
-            )
-
-        if not candidates:
-            return []
-
-        pairs = [
-            [cleaned_query, candidate["text"]]
-            for candidate in candidates
-        ]
-
-        scores = self.model.predict(
-            pairs,
-            batch_size=batch_size,
-            show_progress_bar=False,
-        )
-
-        if len(scores) != len(candidates):
-            raise RuntimeError(
-                "Reranker returned an unexpected "
-                "number of scores."
-            )
-
-        reranked_results: list[dict] = []
-
-        for candidate, score in zip(
-            candidates,
-            scores,
-            strict=True,
-        ):
-            result = dict(candidate)
-            result["reranker_score"] = float(score)
-
-            reranked_results.append(result)
-
-        reranked_results.sort(
-            key=lambda result: result["reranker_score"],
-            reverse=True,
-        )
-
-        final_results = reranked_results[:top_k]
+        final_results = results[:top_k]
 
         for final_rank, result in enumerate(
             final_results,
@@ -95,3 +78,153 @@ class RerankerService:
             result["reranker_rank"] = final_rank
 
         return final_results
+
+    def _fallback(
+        self,
+        candidates: Sequence[dict],
+        top_k: int,
+    ) -> list[dict]:
+        results = []
+
+        for candidate in candidates:
+            result = dict(candidate)
+            result["reranker_score"] = float(
+                candidate.get("rrf_score", 0.0)
+            )
+
+            results.append(result)
+
+        return self._finalize(results, top_k)
+
+    def _request_scores(
+        self,
+        query: str,
+        documents: list[str],
+        top_k: int,
+    ) -> list[tuple[int, float]]:
+        response = httpx.post(
+            COHERE_RERANK_URL,
+            headers={
+                "Authorization": (
+                    f"Bearer {self.api_key}"
+                ),
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model_name,
+                "query": query,
+                "documents": documents,
+                "top_n": min(
+                    top_k,
+                    len(documents),
+                ),
+            },
+            timeout=self.timeout_seconds,
+        )
+
+        response.raise_for_status()
+
+        payload = response.json()
+
+        return [
+            (
+                int(item["index"]),
+                float(
+                    item["relevance_score"]
+                ),
+            )
+            for item in payload.get(
+                "results",
+                [],
+            )
+        ]
+
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[dict],
+        top_k: int = 5,
+    ) -> list[dict]:
+        """
+        Score query-chunk pairs and return the strongest chunks.
+        """
+        cleaned_query = query.strip()
+
+        if not cleaned_query:
+            raise ValueError(
+                "Query cannot be empty."
+            )
+
+        if top_k < 1:
+            raise ValueError(
+                "top_k must be at least 1."
+            )
+
+        if not candidates:
+            return []
+
+        if not self.enabled:
+            return self._fallback(
+                candidates,
+                top_k,
+            )
+
+        documents = [
+            candidate["text"]
+            for candidate in candidates
+        ]
+
+        try:
+            scored = self._request_scores(
+                query=cleaned_query,
+                documents=documents,
+                top_k=top_k,
+            )
+
+        except (
+            httpx.HTTPError,
+            KeyError,
+            ValueError,
+        ) as exc:
+            # Reranking is a quality improvement, not a hard
+            # requirement. A reranker outage should not take down chat.
+            logger.warning(
+                "Reranker request failed; using fusion order",
+                extra={
+                    "event": "reranker_failed",
+                    "error": str(exc),
+                },
+            )
+
+            return self._fallback(
+                candidates,
+                top_k,
+            )
+
+        results: list[dict] = []
+
+        for index, score in scored:
+            if index < 0 or index >= len(
+                candidates
+            ):
+                continue
+
+            result = dict(candidates[index])
+            result["reranker_score"] = score
+
+            results.append(result)
+
+        if not results:
+            return self._fallback(
+                candidates,
+                top_k,
+            )
+
+        results.sort(
+            key=lambda result: result[
+                "reranker_score"
+            ],
+            reverse=True,
+        )
+
+        return self._finalize(results, top_k)

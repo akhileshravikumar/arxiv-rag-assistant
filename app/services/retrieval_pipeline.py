@@ -36,6 +36,7 @@ class RetrievalPipeline:
     def retrieve_and_rerank(
         self,
         db: Session,
+        session_id: str,
         query: str,
         candidate_k: int | None = None,
         final_k: int | None = None,
@@ -62,6 +63,7 @@ class RetrievalPipeline:
 
         candidates = self.hybrid_service.hybrid_search(
             db=db,
+            session_id=session_id,
             query=query,
             top_k=resolved_candidate_k,
         )
@@ -71,16 +73,18 @@ class RetrievalPipeline:
             candidates=candidates,
             top_k=resolved_final_k,
         )
-    
+
     def retrieve_rerank_and_build_context(
         self,
         db: Session,
+        session_id: str,
         query: str,
         candidate_k: int | None = None,
         final_k: int | None = None,
     ) -> ContextBuildResult:
         reranked_chunks = self.retrieve_and_rerank(
             db=db,
+            session_id=session_id,
             query=query,
             candidate_k=candidate_k,
             final_k=final_k,

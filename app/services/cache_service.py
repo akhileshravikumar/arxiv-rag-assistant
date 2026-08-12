@@ -36,33 +36,49 @@ class CacheService:
         self.redis_service = redis_service
         self.key_service = key_service
 
-    def get_corpus_version(self) -> int:
+    def get_corpus_version(
+        self,
+        session_id: str,
+    ) -> int:
         return self.redis_service.get_integer(
-            self.key_service.corpus_version_key(),
+            self.key_service.corpus_version_key(
+                session_id
+            ),
             default=0,
         )
 
-    def increment_corpus_version(self) -> int:
+    def increment_corpus_version(
+        self,
+        session_id: str,
+    ) -> int:
         """
-        Logically invalidate answer caches after ingestion.
+        Logically invalidate a session's answer cache after ingestion.
         """
-        return self.redis_service.increment(
-            self.key_service.corpus_version_key()
-        )
+        try:
+            return self.redis_service.increment(
+                self.key_service.corpus_version_key(
+                    session_id
+                )
+            )
+        except RuntimeError:
+            # A cache outage must not fail an otherwise good ingestion.
+            return 0
 
     def get_answer(
         self,
         *,
+        session_id: str,
         question: str,
         candidate_k: int,
         final_k: int,
         model: str,
     ) -> dict[str, Any] | None:
         corpus_version = (
-            self.get_corpus_version()
+            self.get_corpus_version(session_id)
         )
 
         key = self.key_service.answer_key(
+            session_id=session_id,
             question=question,
             candidate_k=candidate_k,
             final_k=final_k,
@@ -82,6 +98,7 @@ class CacheService:
     def set_answer(
         self,
         *,
+        session_id: str,
         question: str,
         candidate_k: int,
         final_k: int,
@@ -89,10 +106,11 @@ class CacheService:
         value: dict[str, Any],
     ) -> bool:
         corpus_version = (
-            self.get_corpus_version()
+            self.get_corpus_version(session_id)
         )
 
         key = self.key_service.answer_key(
+            session_id=session_id,
             question=question,
             candidate_k=candidate_k,
             final_k=final_k,

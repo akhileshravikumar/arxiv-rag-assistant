@@ -48,6 +48,7 @@ class CacheKeyService:
     def answer_key(
         self,
         *,
+        session_id: str,
         question: str,
         candidate_k: int,
         final_k: int,
@@ -55,6 +56,7 @@ class CacheKeyService:
         corpus_version: int,
     ) -> str:
         payload = {
+            "session_id": session_id,
             "question": self.normalize_text(
                 question
             ),
@@ -89,8 +91,11 @@ class CacheKeyService:
             f"query-embedding:v1:{digest}"
         )
 
-    def corpus_version_key(self) -> str:
+    def corpus_version_key(
+        self,
+        session_id: str,
+    ) -> str:
         return (
             f"{CACHE_KEY_PREFIX}:"
-            "corpus-version"
+            f"corpus-version:{session_id}"
         )

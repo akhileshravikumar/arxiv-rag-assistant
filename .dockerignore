@@ -6,10 +6,9 @@ __pycache__
 *.pyc
 .pytest_cache
 .env
+.env.docker
 
-data/raw/*
-data/processed/extracted_text/*
-data/processed/chunks/*
+frontend
 
 tests
 docs

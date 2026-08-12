@@ -1,20 +1,16 @@
 venv/
+.venv/
 
 .env
+.env.docker
 
 __pycache__/
-
 *.pyc
 
-data/raw/*
-!data/raw/.gitkeep
+.pytest_cache/
 
-data/processed/arxiv_metadata.json
-
-data/processed/extracted_text/*
-!data/processed/extracted_text/.gitkeep
-
-data/processed/chunks/*
-!data/processed/chunks/.gitkeep
-
-.env.docker
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local

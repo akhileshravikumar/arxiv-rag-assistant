@@ -12,6 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import EMBEDDING_DIMENSION
 from app.database.database import Base
 
 
@@ -51,8 +52,8 @@ class Chunk(Base):
     )
 
     embedding: Mapped[list[float] | None] = mapped_column(
-    Vector(384),
-    nullable=True,
+        Vector(EMBEDDING_DIMENSION),
+        nullable=True,
     )
 
     char_start: Mapped[int] = mapped_column(

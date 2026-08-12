@@ -9,9 +9,9 @@ request_id_context: ContextVar[str | None] = (
     )
 )
 
-user_id_context: ContextVar[int | None] = (
+session_id_context: ContextVar[str | None] = (
     ContextVar(
-        "user_id",
+        "session_id",
         default=None,
     )
 )
@@ -21,17 +21,17 @@ def get_request_id() -> str | None:
     return request_id_context.get()
 
 
-def get_user_id() -> int | None:
-    return user_id_context.get()
+def get_session_id() -> str | None:
+    return session_id_context.get()
 
 
-def set_user_context(
-    user_id: int | None,
+def set_session_context(
+    session_id: str | None,
 ) -> Any:
-    return user_id_context.set(user_id)
+    return session_id_context.set(session_id)
 
 
-def reset_user_context(
+def reset_session_context(
     token: Any,
 ) -> None:
-    user_id_context.reset(token)
+    session_id_context.reset(token)

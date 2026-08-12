@@ -72,10 +72,6 @@ services:
     ports:
       - "8000:8000"
 
-    volumes:
-      - ./data:/app/data
-      - huggingface_cache:/root/.cache/huggingface
-
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,42 +99,8 @@ services:
         ]
       interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 120s
-
-    restart: unless-stopped
-
-
-  celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    container_name: arxiv-celery-worker
-
-    env_file:
-      - .env.docker
-
-    volumes:
-      - ./data:/app/data
-      - huggingface_cache:/root/.cache/huggingface
-
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-      redis:
-        condition: service_healthy
-
-    command:
-      [
-        "celery",
-        "-A",
-        "app.core.celery_app.celery_app",
-        "worker",
-        "--loglevel=INFO",
-        "--concurrency=1"
-      ]
+      retries: 5
+      start_period: 20s
 
     restart: unless-stopped
 
@@ -146,4 +108,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  huggingface_cache:

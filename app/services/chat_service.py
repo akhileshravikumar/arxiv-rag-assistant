@@ -38,12 +38,13 @@ class ChatService:
         self.cache_service = cache_service
 
     def answer_question(
-    self,
-    db: Session,
-    question: str,
-    candidate_k: int = 20,
-    final_k: int = 5,
-) -> ChatResult:
+        self,
+        db: Session,
+        session_id: str,
+        question: str,
+        candidate_k: int = 20,
+        final_k: int = 5,
+    ) -> ChatResult:
         cleaned_question = question.strip()
 
         if not cleaned_question:
@@ -60,6 +61,7 @@ class ChatService:
         # 1. Check the final-answer cache first.
         if self.cache_service is not None:
             cached_answer = self.cache_service.get_answer(
+                session_id=session_id,
                 question=cleaned_question,
                 candidate_k=candidate_k,
                 final_k=final_k,
@@ -94,11 +96,28 @@ class ChatService:
         reranked_chunks = (
             self.retrieval_pipeline.retrieve_and_rerank(
                 db=db,
+                session_id=session_id,
                 query=cleaned_question,
                 candidate_k=candidate_k,
                 final_k=final_k,
             )
         )
+
+        if not reranked_chunks:
+            return ChatResult(
+                question=cleaned_question,
+                answer=(
+                    "No papers have been added to this "
+                    "research session yet. Add papers "
+                    "before asking questions."
+                ),
+                model=self.answer_service.model,
+                sources=[],
+                cited_source_numbers=[],
+                context_character_count=0,
+                estimated_context_tokens=0,
+                cache_hit=False,
+            )
 
         # 3. Build bounded, citation-ready context.
         context_result = self.context_builder.build(
@@ -180,6 +199,7 @@ class ChatService:
         # 6. Cache the completed response.
         if self.cache_service is not None:
             self.cache_service.set_answer(
+                session_id=session_id,
                 question=cleaned_question,
                 candidate_k=candidate_k,
                 final_k=final_k,

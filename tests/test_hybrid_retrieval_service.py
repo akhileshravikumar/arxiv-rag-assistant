@@ -9,6 +9,7 @@ class FakeDenseService:
     def dense_search(
         self,
         db,
+        session_id: str,
         query: str,
         top_k: int,
     ) -> list[dict]:
@@ -35,6 +36,8 @@ class FakeDenseService:
 class FakeBM25Service:
     def search(
         self,
+        db,
+        session_id: str,
         query: str,
         top_k: int,
     ) -> list[dict]:
@@ -73,6 +76,7 @@ def test_duplicate_chunk_is_merged():
 
     results = service.hybrid_search(
         db=None,
+        session_id="session-a",
         query="retrieval",
         top_k=3,
     )
@@ -91,6 +95,7 @@ def test_chunk_in_both_rankings_is_first():
 
     results = service.hybrid_search(
         db=None,
+        session_id="session-a",
         query="retrieval",
         top_k=3,
     )
@@ -111,6 +116,7 @@ def test_empty_query_is_rejected():
     ):
         service.hybrid_search(
             db=None,
+            session_id="session-a",
             query="   ",
             top_k=5,
         )
@@ -125,6 +131,7 @@ def test_invalid_top_k_is_rejected():
     ):
         service.hybrid_search(
             db=None,
+            session_id="session-a",
             query="RAG",
             top_k=0,
         )

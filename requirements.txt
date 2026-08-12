@@ -1,6 +1,6 @@
 fastapi
 
-uvicorn
+uvicorn[standard]
 
 sqlalchemy
 
@@ -10,30 +10,20 @@ python-dotenv
 
 requests
 
+httpx
+
 pymupdf
 
-alembic
-
 pgvector
-
-sentence-transformers
-
-pytest
 
 rank-bm25
 
 openai
 
-pwdlib[argon2]
-
-PyJWT
-
 python-multipart
 
 pydantic[email]
 
-httpx
-
-celery[redis]
-
 redis
+
+pytest

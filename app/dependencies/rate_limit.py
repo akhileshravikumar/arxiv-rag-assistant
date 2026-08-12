@@ -1,24 +1,21 @@
 import logging
-from typing import Annotated
 
 from fastapi import (
-    Depends,
     HTTPException,
     Request,
     Response,
     status,
 )
 
-from app.dependencies.auth import (
-    AdminUser,
-    CurrentUser,
-)
-from app.models.user import User
+from app.dependencies.session import CurrentSession
+from app.models.session import ResearchSession
 from app.services.rate_limit_service import (
     CHAT_RATE_LIMIT_REQUESTS,
     CHAT_RATE_LIMIT_WINDOW_SECONDS,
     INGESTION_RATE_LIMIT_REQUESTS,
     INGESTION_RATE_LIMIT_WINDOW_SECONDS,
+    SESSION_CREATE_RATE_LIMIT_REQUESTS,
+    SESSION_CREATE_RATE_LIMIT_WINDOW_SECONDS,
     RateLimitService,
 )
 from app.services.redis_service import (
@@ -32,6 +29,28 @@ logger = logging.getLogger(__name__)
 rate_limit_service = RateLimitService(
     redis_service=redis_service
 )
+
+
+def client_identifier(
+    request: Request,
+) -> str:
+    """
+    Best-effort client address behind a platform proxy.
+    """
+    forwarded_for = request.headers.get(
+        "X-Forwarded-For"
+    )
+
+    if forwarded_for:
+        return forwarded_for.split(",")[
+            0
+        ].strip()
+
+    return (
+        request.client.host
+        if request.client
+        else "unknown"
+    )
 
 
 def enforce_rate_limit(
@@ -52,8 +71,7 @@ def enforce_rate_limit(
         )
 
     except RuntimeError:
-        # Fail open for now so a Redis outage does not
-        # completely disable the API.
+        # Fail open so a Redis outage does not disable the API.
         logger.warning(
             "Rate limiter unavailable",
             extra={
@@ -108,15 +126,35 @@ def enforce_rate_limit(
         )
 
 
-def limit_chat_requests(
+def limit_session_creation(
     request: Request,
     response: Response,
-    current_user: CurrentUser,
-) -> User:
+) -> None:
     enforce_rate_limit(
         request=request,
         response=response,
-        identifier=f"user:{current_user.id}",
+        identifier=(
+            f"ip:{client_identifier(request)}"
+        ),
+        scope="session-create",
+        limit=(
+            SESSION_CREATE_RATE_LIMIT_REQUESTS
+        ),
+        window_seconds=(
+            SESSION_CREATE_RATE_LIMIT_WINDOW_SECONDS
+        ),
+    )
+
+
+def limit_chat_requests(
+    request: Request,
+    response: Response,
+    session: CurrentSession,
+) -> ResearchSession:
+    enforce_rate_limit(
+        request=request,
+        response=response,
+        identifier=f"session:{session.id}",
         scope="chat",
         limit=CHAT_RATE_LIMIT_REQUESTS,
         window_seconds=(
@@ -124,37 +162,36 @@ def limit_chat_requests(
         ),
     )
 
-    return current_user
+    return session
 
 
 def limit_ingestion_requests(
     request: Request,
     response: Response,
-    admin_user: AdminUser,
-) -> User:
+    session: CurrentSession,
+) -> ResearchSession:
     enforce_rate_limit(
         request=request,
         response=response,
-        identifier=f"user:{admin_user.id}",
+        identifier=f"session:{session.id}",
         scope="ingestion",
-        limit=(
-            INGESTION_RATE_LIMIT_REQUESTS
-        ),
+        limit=INGESTION_RATE_LIMIT_REQUESTS,
         window_seconds=(
             INGESTION_RATE_LIMIT_WINDOW_SECONDS
         ),
     )
 
-    return admin_user
+    enforce_rate_limit(
+        request=request,
+        response=response,
+        identifier=(
+            f"ip:{client_identifier(request)}"
+        ),
+        scope="ingestion-ip",
+        limit=INGESTION_RATE_LIMIT_REQUESTS * 3,
+        window_seconds=(
+            INGESTION_RATE_LIMIT_WINDOW_SECONDS
+        ),
+    )
 
-
-RateLimitedChatUser = Annotated[
-    User,
-    Depends(limit_chat_requests),
-]
-
-
-RateLimitedAdminUser = Annotated[
-    User,
-    Depends(limit_ingestion_requests),
-]
+    return session

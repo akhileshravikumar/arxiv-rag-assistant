@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from rank_bm25 import BM25Okapi
@@ -21,29 +22,54 @@ class BM25Document:
     text: str
 
 
+@dataclass(frozen=True)
+class SessionIndex:
+    documents: list[BM25Document]
+    index: BM25Okapi
+
+
 class BM25Service:
+    """
+    Lexical retrieval scoped to one research session.
+
+    A session holds at most five papers (~250 chunks), so building an
+    index on demand costs single-digit milliseconds. Indexes are cached
+    per session and evicted least-recently-used, which keeps memory flat
+    no matter how many sessions the deployment has served.
+    """
+
     def __init__(
         self,
         phrase_boost: float = 1.5,
+        max_cached_sessions: int = 20,
     ) -> None:
-        self.phrase_boost = phrase_boost
-        self.documents: list[BM25Document] = []
-        self.tokenized_corpus: list[list[str]] = []
-        self.index: BM25Okapi | None = None
+        if max_cached_sessions < 1:
+            raise ValueError(
+                "max_cached_sessions must be at least 1."
+            )
 
-    def build_index(
+        self.phrase_boost = phrase_boost
+        self.max_cached_sessions = (
+            max_cached_sessions
+        )
+
+        self._cache: OrderedDict[
+            str,
+            SessionIndex,
+        ] = OrderedDict()
+
+    def _build_for_session(
         self,
         db: Session,
-    ) -> int:
-        """
-        Load all chunk text from PostgreSQL and build
-        an in-memory BM25 index.
-        """
+        session_id: str,
+    ) -> SessionIndex | None:
         statement = (
             select(
                 Chunk.id.label("chunk_id"),
                 Chunk.paper_id,
-                Paper.title.label("paper_title"),
+                Paper.title.label(
+                    "paper_title"
+                ),
                 Chunk.chunk_index,
                 Chunk.text,
             )
@@ -51,15 +77,13 @@ class BM25Service:
                 Paper,
                 Paper.id == Chunk.paper_id,
             )
+            .where(
+                Paper.session_id == session_id
+            )
             .order_by(Chunk.id)
         )
 
         rows = db.execute(statement).all()
-
-        if not rows:
-            raise RuntimeError(
-                "No chunks exist. Run the ingestion pipeline first."
-            )
 
         documents: list[BM25Document] = []
         tokenized_corpus: list[list[str]] = []
@@ -67,7 +91,7 @@ class BM25Service:
         for row in rows:
             tokens = tokenize_text(row.text)
 
-            # Empty chunks provide no searchable lexical content.
+            # Empty chunks carry no lexical signal.
             if not tokens:
                 continue
 
@@ -84,26 +108,62 @@ class BM25Service:
             tokenized_corpus.append(tokens)
 
         if not documents:
-            raise RuntimeError(
-                "No searchable chunk text was found."
-            )
+            return None
 
-        self.documents = documents
-        self.tokenized_corpus = tokenized_corpus
-        self.index = BM25Okapi(tokenized_corpus)
+        return SessionIndex(
+            documents=documents,
+            index=BM25Okapi(tokenized_corpus),
+        )
 
-        return len(documents)
+    def get_index(
+        self,
+        db: Session,
+        session_id: str,
+    ) -> SessionIndex | None:
+        if session_id in self._cache:
+            self._cache.move_to_end(session_id)
+
+            return self._cache[session_id]
+
+        session_index = self._build_for_session(
+            db=db,
+            session_id=session_id,
+        )
+
+        if session_index is None:
+            return None
+
+        self._cache[session_id] = session_index
+
+        while (
+            len(self._cache)
+            > self.max_cached_sessions
+        ):
+            self._cache.popitem(last=False)
+
+        return session_index
+
+    def invalidate(
+        self,
+        session_id: str,
+    ) -> None:
+        """
+        Drop a cached index after the session's corpus changes.
+        """
+        self._cache.pop(session_id, None)
 
     def search(
         self,
+        db: Session,
+        session_id: str,
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
         """
-        Search the in-memory BM25 index.
+        Search one session's chunks.
 
-        An additional phrase boost is applied when the complete
-        normalized query appears in the chunk.
+        An empty session returns no results rather than raising, so the
+        frontend can query before any paper has been ingested.
         """
         cleaned_query = query.strip()
 
@@ -117,20 +177,25 @@ class BM25Service:
                 "top_k must be between 1 and 100."
             )
 
-        if self.index is None:
-            raise RuntimeError(
-                "BM25 index has not been built."
-            )
+        session_index = self.get_index(
+            db=db,
+            session_id=session_id,
+        )
 
-        query_tokens = tokenize_text(cleaned_query)
+        if session_index is None:
+            return []
+
+        query_tokens = tokenize_text(
+            cleaned_query
+        )
 
         if not query_tokens:
-            raise ValueError(
-                "Search query contains no searchable terms."
-            )
+            return []
 
-        bm25_scores = self.index.get_scores(
-            query_tokens
+        bm25_scores = (
+            session_index.index.get_scores(
+                query_tokens
+            )
         )
 
         normalized_query = normalize_text(
@@ -140,24 +205,21 @@ class BM25Service:
         ranked_results: list[dict] = []
 
         for document, raw_score in zip(
-            self.documents,
+            session_index.documents,
             bm25_scores,
             strict=True,
         ):
             score = float(raw_score)
 
-            normalized_document = normalize_text(
-                document.text
-            )
-
             exact_phrase_match = (
-                normalized_query in normalized_document
+                normalized_query
+                in normalize_text(document.text)
             )
 
             if exact_phrase_match:
                 score += self.phrase_boost
 
-            # Avoid returning chunks with no lexical match.
+            # Skip chunks with no lexical overlap at all.
             if score <= 0:
                 continue
 

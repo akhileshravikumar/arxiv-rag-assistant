@@ -57,7 +57,17 @@ class AnswerGenerationService:
         self.model = (
             model
             or os.getenv("OPENAI_MODEL")
-            or "gpt-5.6"
+            or "gpt-4.1-mini"
+        )
+
+        # Only reasoning models accept a reasoning effort. Leave this
+        # unset for gpt-4.1-class models or the request is rejected.
+        self.reasoning_effort = (
+            os.getenv(
+                "OPENAI_REASONING_EFFORT",
+                "",
+            ).strip()
+            or None
         )
 
         self.client = OpenAI(
@@ -127,14 +137,20 @@ class AnswerGenerationService:
             f"SOURCE CONTEXT:\n{context}"
         )
 
+        request_options: dict = {
+            "model": self.model,
+            "instructions": RAG_INSTRUCTIONS,
+            "input": model_input,
+            "max_output_tokens": 800,
+        }
+
+        if self.reasoning_effort:
+            request_options["reasoning"] = {
+                "effort": self.reasoning_effort,
+            }
+
         response = self.client.responses.create(
-            model=self.model,
-            reasoning={
-                "effort": "low",
-            },
-            instructions=RAG_INSTRUCTIONS,
-            input=model_input,
-            max_output_tokens=800,
+            **request_options
         )
 
         answer = response.output_text.strip()

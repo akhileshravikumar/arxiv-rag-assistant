@@ -16,11 +16,12 @@ class RetrievalService:
     def dense_search(
         self,
         db: Session,
+        session_id: str,
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
         """
-        Return chunks ordered by cosine similarity to the query.
+        Return one session's chunks ordered by cosine similarity.
         """
         cleaned_query = query.strip()
 
@@ -60,7 +61,8 @@ class RetrievalService:
                 Paper.id == Chunk.paper_id,
             )
             .where(
-                Chunk.embedding.is_not(None)
+                Paper.session_id == session_id,
+                Chunk.embedding.is_not(None),
             )
             .order_by(
                 cosine_distance

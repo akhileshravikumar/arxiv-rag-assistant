@@ -49,15 +49,10 @@ jobs:
       DATABASE_URL: postgresql+psycopg://postgres:password@localhost:5432/arxiv_test_db
 
       REDIS_URL: redis://localhost:6379/2
-      CELERY_BROKER_URL: redis://localhost:6379/0
-      CELERY_RESULT_BACKEND: redis://localhost:6379/1
-
-      JWT_SECRET_KEY: test-secret-key-for-ci-only
-      JWT_ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
 
       OPENAI_API_KEY: test-openai-key-for-ci-only
       OPENAI_MODEL: test-model
+      EMBEDDING_DIMENSION: 384
 
     steps:
       - name: Checkout repository

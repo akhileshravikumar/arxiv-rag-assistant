@@ -40,12 +40,13 @@ class HybridRetrievalService:
     def hybrid_search(
         self,
         db: Session,
+        session_id: str,
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
         """
-        Run dense and BM25 retrieval, merge duplicate chunks,
-        and rank them using Reciprocal Rank Fusion.
+        Run dense and BM25 retrieval over one session's corpus, merge
+        duplicate chunks, and rank them using Reciprocal Rank Fusion.
         """
         cleaned_query = query.strip()
 
@@ -64,11 +65,14 @@ class HybridRetrievalService:
 
         dense_results = self.dense_service.dense_search(
             db=db,
+            session_id=session_id,
             query=cleaned_query,
             top_k=candidate_count,
         )
 
         bm25_results = self.bm25_service.search(
+            db=db,
+            session_id=session_id,
             query=cleaned_query,
             top_k=candidate_count,
         )

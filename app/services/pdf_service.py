@@ -7,15 +7,94 @@ import pymupdf
 @dataclass(frozen=True)
 class PDFExtractionResult:
     pdf_path: Path
+    # Page-delimited, for inspection and debugging.
     text: str
+    # Marker-free, for chunking and embedding.
+    plain_text: str
+    title: str | None
+    authors: list[str]
     page_count: int
     character_count: int
     word_count: int
     pages_without_text: list[int]
 
 
+MAX_TITLE_LENGTH = 300
+
+
 def count_words(text: str) -> int:
     return len(text.split())
+
+
+def derive_title(
+    metadata: dict,
+    first_page_text: str,
+    fallback: str,
+) -> str:
+    """
+    Best-effort title for an uploaded PDF.
+
+    Embedded metadata is preferred, then the first substantial line of
+    page one, then the filename. The user can rename the paper
+    afterwards, so a wrong guess is cheap.
+    """
+    embedded_title = (
+        metadata.get("title") or ""
+    ).strip()
+
+    if len(embedded_title) >= 8:
+        return embedded_title[
+            :MAX_TITLE_LENGTH
+        ]
+
+    for line in first_page_text.splitlines():
+        candidate = " ".join(line.split())
+
+        # Skip page furniture, arXiv stamps and section numbers.
+        if len(candidate) < 12:
+            continue
+
+        if candidate.lower().startswith(
+            (
+                "arxiv:",
+                "preprint",
+                "under review",
+                "published as",
+            )
+        ):
+            continue
+
+        return candidate[:MAX_TITLE_LENGTH]
+
+    return fallback[:MAX_TITLE_LENGTH]
+
+
+def derive_authors(
+    metadata: dict,
+) -> list[str]:
+    raw_authors = (
+        metadata.get("author") or ""
+    ).strip()
+
+    if not raw_authors:
+        return ["Unknown"]
+
+    separators = [";", ",", " and "]
+
+    for separator in separators:
+        if separator in raw_authors:
+            authors = [
+                author.strip()
+                for author in raw_authors.split(
+                    separator
+                )
+                if author.strip()
+            ]
+
+            if authors:
+                return authors[:25]
+
+    return [raw_authors]
 
 
 def extract_text_from_pdf(
@@ -44,6 +123,7 @@ def extract_text_from_pdf(
 
     page_texts: list[str] = []
     pages_without_text: list[int] = []
+    document_metadata: dict = {}
 
     try:
         with pymupdf.open(
@@ -61,6 +141,10 @@ def extract_text_from_pdf(
                 raise ValueError(
                     "The PDF contains no pages."
                 )
+
+            document_metadata = (
+                document.metadata or {}
+            )
 
             for page_number, page in enumerate(
                 document,
@@ -118,6 +202,19 @@ def extract_text_from_pdf(
     return PDFExtractionResult(
         pdf_path=resolved_path,
         text=output_content,
+        plain_text=full_text,
+        title=derive_title(
+            metadata=document_metadata,
+            first_page_text=(
+                page_texts[0]
+                if page_texts
+                else ""
+            ),
+            fallback=resolved_path.stem,
+        ),
+        authors=derive_authors(
+            document_metadata
+        ),
         page_count=page_count,
         character_count=len(full_text),
         word_count=count_words(full_text),
@@ -127,45 +224,20 @@ def extract_text_from_pdf(
     )
 
 
-def save_extracted_text(
-    extraction_result: PDFExtractionResult,
-    output_path: Path,
-) -> Path:
-    resolved_output_path = (
-        output_path.expanduser().resolve()
-    )
+def count_pdf_pages(
+    pdf_bytes: bytes,
+) -> int:
+    """
+    Read a page count without extracting text, for upload validation.
+    """
+    with pymupdf.open(
+        stream=pdf_bytes,
+        filetype="pdf",
+    ) as document:
+        if document.needs_pass:
+            raise PermissionError(
+                "The PDF is password-protected "
+                "and cannot be read."
+            )
 
-    resolved_output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    try:
-        resolved_output_path.write_text(
-            extraction_result.text,
-            encoding="utf-8",
-        )
-
-    except OSError as exc:
-        raise OSError(
-            "Could not write the output file: "
-            f"{resolved_output_path}"
-        ) from exc
-
-    return resolved_output_path
-
-
-def extract_and_save_pdf_text(
-    pdf_path: Path,
-    output_path: Path,
-) -> tuple[PDFExtractionResult, Path]:
-    extraction_result = (
-        extract_text_from_pdf(pdf_path)
-    )
-
-    saved_path = save_extracted_text(
-        extraction_result=extraction_result,
-        output_path=output_path,
-    )
-
-    return extraction_result, saved_path
+        return document.page_count

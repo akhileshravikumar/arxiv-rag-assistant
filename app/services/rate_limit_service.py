@@ -51,30 +51,48 @@ class RateLimitService:
         )
 
 
+# There is no login, so limits are keyed on the session and the client
+# address. The real backstop against a runaway bill is a spend cap on
+# the OpenAI account.
+
 CHAT_RATE_LIMIT_REQUESTS = int(
     os.getenv(
         "CHAT_RATE_LIMIT_REQUESTS",
-        "10",
+        "20",
     )
 )
 
 CHAT_RATE_LIMIT_WINDOW_SECONDS = int(
     os.getenv(
         "CHAT_RATE_LIMIT_WINDOW_SECONDS",
-        "60",
+        "7200",
     )
 )
 
 INGESTION_RATE_LIMIT_REQUESTS = int(
     os.getenv(
         "INGESTION_RATE_LIMIT_REQUESTS",
-        "5",
+        "3",
     )
 )
 
 INGESTION_RATE_LIMIT_WINDOW_SECONDS = int(
     os.getenv(
         "INGESTION_RATE_LIMIT_WINDOW_SECONDS",
-        "3600",
+        "7200",
+    )
+)
+
+SESSION_CREATE_RATE_LIMIT_REQUESTS = int(
+    os.getenv(
+        "SESSION_CREATE_RATE_LIMIT_REQUESTS",
+        "10",
+    )
+)
+
+SESSION_CREATE_RATE_LIMIT_WINDOW_SECONDS = int(
+    os.getenv(
+        "SESSION_CREATE_RATE_LIMIT_WINDOW_SECONDS",
+        "86400",
     )
 )
