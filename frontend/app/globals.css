@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/*
+ * Dark is the default theme, so the base tokens below are the dark
+ * palette. `html[data-theme="light"]` re-declares the same names and
+ * wins on specificity over the `:root` block Tailwind emits from
+ * `@theme`, so every `var(--color-*)` reference switches at runtime.
+ */
+@theme {
+  --color-canvas: #2c2c2c;
+  --color-surface: #363636;
+  --color-surface-hover: #414141;
+
+  --color-ink: #f3f4f4;
+  --color-muted: #a9a4a4;
+
+  --color-line: #4a4a4a;
+  --color-line-strong: #666666;
+
+  --color-accent: #853953;
+  --color-accent-hover: #9e4463;
+  --color-accent-soft: #3b2430;
+  --color-accent-soft-hover: #4a2c3c;
+
+  --color-secondary: #612d53;
+  --color-secondary-hover: #763763;
+
+  /* Accent-coloured *text* and links. The fill colours above are picked
+     for contrast against the canvas, not for legibility as type, so
+     small text uses this instead. */
+  --color-highlight: #d492a8;
+  --color-highlight-hover: #e5b0c1;
+
+  /* Text that sits on top of an accent-filled surface. */
+  --color-on-accent: #f3f4f4;
+
+  --color-danger: #f1948a;
+
+  --shadow-ring: 0 0 0 3px rgba(133, 57, 83, 0.32);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --color-canvas: #f1e2d1;
+  --color-surface: #fbf3e8;
+  --color-surface-hover: #f5e9da;
+
+  --color-ink: #541a1a;
+  --color-muted: #8a5c4a;
+
+  --color-line: #dcc3aa;
+  --color-line-strong: #c9a98c;
+
+  --color-accent: #dcc3aa;
+  --color-accent-hover: #cbad90;
+  --color-accent-soft: #e9d8c4;
+  --color-accent-soft-hover: #e0cab1;
+
+  --color-secondary: #612d53;
+  --color-secondary-hover: #4e2443;
+
+  --color-highlight: #612d53;
+  --color-highlight-hover: #7d3a6b;
+
+  --color-on-accent: #541a1a;
+
+  --color-danger: #a32020;
+
+  --shadow-ring: 0 0 0 3px rgba(97, 45, 83, 0.22);
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+body {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+/* Theme swaps and hover states share one easing so nothing snaps. */
+html,
+body,
+button,
+a,
+input,
+label,
+aside,
+article,
+header,
+li,
+.themed {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+
+button:not(:disabled),
+a[href],
+label:not(.is-blocked) {
+  cursor: pointer;
+}
+
+:where(button, a, input):focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+/* Applied briefly when a citation is clicked, so the jump is visible. */
+@keyframes source-flash {
+  0% {
+    background-color: var(--color-accent-soft);
+  }
+  100% {
+    background-color: var(--color-surface);
+  }
+}
+
+.source-flash {
+  animation: source-flash 1.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
