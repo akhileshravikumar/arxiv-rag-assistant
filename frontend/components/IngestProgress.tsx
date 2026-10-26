@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { TERMINAL_JOB_STATES } from "@/lib/types";
 import type { JobStatus } from "@/lib/types";
 
@@ -49,7 +49,18 @@ export function IngestProgress({
     }
   }, [job, onFinished]);
 
-  if (error) {
+  const temporarilyUnavailable =
+    error instanceof TypeError ||
+    (error instanceof ApiError && error.status >= 500);
+
+  const connectionNotice = temporarilyUnavailable ? (
+    <p role="status" className="text-sm text-[var(--color-muted)]">
+      Progress updates are temporarily unavailable. Retrying automatically…
+      {job ? " Showing the last known progress." : ""}
+    </p>
+  ) : null;
+
+  if (error && !temporarilyUnavailable) {
     return (
       <p className="text-sm text-[var(--color-danger)]">
         Lost track of this job: {(error as Error).message}
@@ -58,6 +69,8 @@ export function IngestProgress({
   }
 
   if (!job) {
+    if (connectionNotice) return connectionNotice;
+
     return (
       <p className="text-sm text-[var(--color-muted)]">
         Starting…
@@ -67,6 +80,7 @@ export function IngestProgress({
 
   return (
     <div className="space-y-4">
+      {connectionNotice}
       <div>
         <div className="flex items-baseline justify-between">
           <h2 className="text-sm font-semibold">

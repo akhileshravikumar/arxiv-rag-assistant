@@ -19,7 +19,7 @@ class FakeRedisService:
 
         return True
 
-    def get_json(self, key):
+    def get_json_strict(self, key):
         raw = self.store.get(key)
 
         return (
@@ -136,7 +136,7 @@ def test_silent_running_job_is_reported_as_stale():
         - timedelta(hours=1)
     ).isoformat()
 
-    stored = service.redis_service.get_json(
+    stored = service.redis_service.get_json_strict(
         service._key(job["job_id"])
     )
     stored["updated_at"] = stale_time
